@@ -1,0 +1,117 @@
+GITLAB PIPELINE TRIAGE
+
+  DEMO RUN - no project or mr was given, so this triaged a real public
+  merge request in gitlab-org/cli whose pipeline is genuinely
+  failing. Everything below is live data. Point it at your own:
+    rote play run princepanchani/gitlab-pipeline-triage \
+      project=your-group/your-repo mr=123
+
+  https://gitlab.com/gitlab-org/cli/-/merge_requests/3093
+  Draft: Remove experimental `glab mcp serve` command
+
+VERDICT: BLOCKED BY PIPELINE
+
+  7 jobs are blocking this merge request; 4 look caused by this change.
+
+  whose move : dnsmichi
+  detail     : 7 blocking
+
+BLOCKING JOBS (7)
+  [tests:integration] caused by this change
+      stage    : test
+      evidence : tests:integration passes on main and fails here
+      owner    : dnsmichi
+      next     : This is the one to look at first: the job is green on main,
+                 so the change is the likely cause.
+  [tests:unit] caused by this change
+      stage    : test
+      evidence : tests:unit passes on main and fails here
+      owner    : dnsmichi
+      next     : This is the one to look at first: the job is green on main,
+                 so the change is the likely cause.
+  [lint] caused by this change
+      stage    : test
+      evidence : lint passes on main and fails here
+      owner    : dnsmichi
+      next     : This is the one to look at first: the job is green on main,
+                 so the change is the likely cause.
+  [lint_commit] no baseline to compare against
+      stage    : test
+      evidence : no job named lint_commit ran on main, so there is no baseline
+      owner    : dnsmichi
+      next     : This job exists only on this branch, so nothing rules the
+                 change out as the cause.
+  [check_go_generated_code] caused by this change
+      stage    : test
+      evidence : check_go_generated_code passes on main and fails here
+      owner    : dnsmichi
+      next     : This is the one to look at first: the job is green on main,
+                 so the change is the likely cause.
+  [check_docs_markdown] no baseline to compare against
+      stage    : documentation
+      evidence : no job named check_docs_markdown ran on main, so there is no
+                 baseline
+      owner    : dnsmichi
+      next     : This job exists only on this branch, so nothing rules the
+                 change out as the cause.
+  [check_docs_update] no baseline to compare against
+      stage    : documentation
+      evidence : no job named check_docs_update ran on main, so there is no
+                 baseline
+      owner    : dnsmichi
+      next     : This job exists only on this branch, so nothing rules the
+                 change out as the cause.
+
+ADVISORY FAILURES (0) - red, but allow_failure, so not blocking
+  none
+
+FIX ORDER (cheapest first)
+  1. [tests:integration] This is the one to look at first: the job is green on
+     main, so the change is the likely cause.
+       who : dnsmichi
+  2. [tests:unit] This is the one to look at first: the job is green on main,
+     so the change is the likely cause.
+       who : dnsmichi
+  3. [lint] This is the one to look at first: the job is green on main, so the
+     change is the likely cause.
+       who : dnsmichi
+  4. [check_go_generated_code] This is the one to look at first: the job is
+     green on main, so the change is the likely cause.
+       who : dnsmichi
+  5. [lint_commit] This job exists only on this branch, so nothing rules the
+     change out as the cause.
+       who : dnsmichi
+  6. [check_docs_markdown] This job exists only on this branch, so nothing
+     rules the change out as the cause.
+       who : dnsmichi
+  7. [check_docs_update] This job exists only on this branch, so nothing rules
+     the change out as the cause.
+       who : dnsmichi
+
+  Retries come first because a runner failure can turn the pipeline
+  green without anybody reading code. What is already broken on the
+  target branch comes last, because it is not this merge request's job.
+
+NOT MEASURED (0)
+  nothing - every dimension was read
+
+STAGE LEDGER
+  read      merge_request
+  read      pipeline
+  read      jobs
+  read      baseline  (via the merge base commit, latest push pipeline)
+
+GITLAB SAYS
+  merge request         : opened
+  pipeline              : failed  (#2440031513)
+  jobs                  : 12 total, 7 failed
+  target branch         : main
+  baseline pipeline     : success  (#2437796108, 13 jobs)
+
+  pipeline  https://gitlab.com/gitlab-org/cli/-/pipelines/2440031513
+
+SELF-CHECK (ran before any live data was judged)
+  74/74 triage-logic cases passed
+
+Read-only: nothing was retried, cancelled, approved or merged.
+A dimension marked 'not read' is unknown, not clean.

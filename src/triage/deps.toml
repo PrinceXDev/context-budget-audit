@@ -1,0 +1,18 @@
+schema_version = 1
+
+[[tools]]
+id = "python3"
+command = "python3"
+required = true
+
+[[tools.install]]
+manager = "brew"
+package = "python@3"
+
+[[tools.install]]
+manager = "apt"
+package = "python3"
+
+[[tools.install]]
+manager = "system"
+notes = "Any Python 3.8+ on PATH. All three resource scripts are standard-library only: validate.py uses json, os, re, sys, urllib.parse; fetch.py uses json, os, socket, sys, urllib.error, urllib.request; triage.py uses json and sys; selfcheck.py uses json, subprocess and sys and invokes only triage.py through sys.executable. There is no third-party dependency, no virtualenv, and nothing is installed at run time. The only network reach is HTTPS GET against the GitLab REST API v4 on the host given by the gitlab_host parameter (default gitlab.com), and only these four read paths under /api/v4/projects/<project>: the merge request itself, its /pipelines, /pipelines/<id>/jobs for the merge request pipeline and for one target-branch pipeline, and /pipelines?ref=<target-branch> to select that baseline. No other host is contacted, no binary other than python3 is executed, and no shell is spawned. A GITLAB_TOKEN or CI_JOB_TOKEN present in the environment is sent as a PRIVATE-TOKEN or JOB-TOKEN request header and is never placed in a URL query string, never written to stdout or stderr, and never recorded in a step argument; only a boolean about its presence appears in any output. Without a token the play still runs against public projects, and any dimension GitLab gates behind authentication degrades to a labeled unknown rather than failing the run."

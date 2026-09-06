@@ -116,18 +116,36 @@ except urllib.error.HTTPError as exc:
         degrade("auth_required",
                 "HTTP %d - this dimension needs a GITLAB_TOKEN with read_api scope" % exc.code)
     if exc.code == 404:
-        # Fail closed. A 404 means the project/MR does not exist, or it is
-        # private and was addressed anonymously. Never report a green verdict.
-        if token:
+        # Fail closed ONLY where a 404 is genuinely ambiguous, which is the merge
+        # request itself. That dimension is critical and it guards project
+        # existence for every other one: if the path is wrong, or the project is
+        # private and was addressed anonymously, `mr` 404s and the whole run
+        # aborts there with no verdict. So a 404 on a SUB-resource that was
+        # reached at all cannot mean "no such project" - it means that endpoint
+        # is absent on this instance, and the honest answer is unknown.
+        if kind in CRITICAL:
+            if token:
+                sys.stderr.write(
+                    "gitlab-mr-gate: HTTP 404 reading %s - no project or MR at this path that the "
+                    "supplied token can see. Check the full namespace path exactly as it appears in "
+                    "the GitLab URL, including any subgroups\n" % kind)
+                raise SystemExit(1)
             sys.stderr.write(
-                "gitlab-mr-gate: HTTP 404 reading %s - no project or MR at this path that the "
-                "supplied token can see. Check the full namespace path exactly as it appears in "
-                "the GitLab URL, including any subgroups\n" % kind)
+                "gitlab-mr-gate: HTTP 404 reading %s - project or MR not found, or the project is "
+                "private and no GITLAB_TOKEN was supplied\n" % kind)
             raise SystemExit(1)
-        sys.stderr.write(
-            "gitlab-mr-gate: HTTP 404 reading %s - project or MR not found, or the project is "
-            "private and no GITLAB_TOKEN was supplied\n" % kind)
-        raise SystemExit(1)
+        if kind == "approval_state":
+            # Merge request approval RULES are a GitLab Premium/Ultimate
+            # feature. On Community Edition - which is most self-hosted GitLab -
+            # this endpoint does not exist and returns 404 while every other
+            # dimension reads perfectly well. Treating that as fatal made the
+            # play unrunnable against any CE instance.
+            degrade("not_available",
+                    "HTTP 404 - approval rules are a GitLab Premium/Ultimate feature and this "
+                    "endpoint is absent on Community Edition; approval counts were read separately")
+        degrade("absent",
+                "HTTP 404 - this dimension is not available for this merge request on this "
+                "GitLab instance")
     if exc.code == 429:
         degrade("rate_limited", "HTTP 429 - GitLab is rate limiting; re-run later")
     if 500 <= exc.code < 600:
