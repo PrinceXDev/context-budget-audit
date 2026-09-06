@@ -1,0 +1,163 @@
+GITLAB MR QUEUE
+
+  DEMO RUN - no project was given, so this triaged a real public backlog
+  in gitlab-org/cli. Everything below is live data. Point it at your own:
+    rote play run princepanchani/gitlab-mr-queue project=your-group/your-repo
+
+  67 open merge requests. None can merge right now; the queue is mostly
+  waiting on author (15), and the oldest has been open 197 days.
+
+  open merge requests : 67
+  fully gated         : 15 of 15
+
+WAITING ON AUTHOR  (15)
+  !2879  [197d open, 72d idle  << STALE]  chore: update the examples for the glab issue list command
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/2879
+        - [author] has unresolved blocking discussions
+        - [reviewers] needs 2 more approval(s) of 2
+        - [reviewers] rule /docs/ (code_owner) unsatisfied
+        - [reviewers] rule * (code_owner) unsatisfied
+        ? not measured: who can satisfy rule /docs/ is not visible without a GITLAB_TOKEN (GitLab returned an empty eligible-approver list anonymously)
+        ? not measured: who can satisfy rule * is not visible without a GITLAB_TOKEN (GitLab returned an empty eligible-approver list anonymously)
+        author Aayush-Saini | into main | pipeline success | updated 2026-06-26
+  !2912  [187d open, 77d idle  << STALE]  fix(mr): include file context in raw output for diff-level comments
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/2912
+        - [author] has merge conflicts
+        - [reviewers] needs 1 more approval(s) of 1
+        - [reviewers] rule * (code_owner) unsatisfied
+        ? not measured: who can satisfy rule * is not visible without a GITLAB_TOKEN (GitLab returned an empty eligible-approver list anonymously)
+        author elwyn-gitlab | into main | pipeline success | updated 2026-06-20
+  !2950  [183d open, 72d idle  << STALE]  fix: Only send masked_and_hidden when --hidden flag is set
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/2950
+        - [author] has unresolved blocking discussions
+        ? not measured: no pipeline exists, and this project does not require one to merge
+        author Ashutosh0x | into main | pipeline none | updated 2026-06-26
+  !3093  [149d open, 77d idle  << STALE]  Draft: Remove experimental `glab mcp serve` command
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3093
+        - [author] is still a draft
+        - [reviewers] needs 2 more approval(s) of 2
+        - [reviewers] rule /docs/ (code_owner) unsatisfied
+        - [reviewers] rule * (code_owner) unsatisfied
+        - [author] latest pipeline failed
+        ? not measured: who can satisfy rule /docs/ is not visible without a GITLAB_TOKEN (GitLab returned an empty eligible-approver list anonymously)
+        ? not measured: who can satisfy rule * is not visible without a GITLAB_TOKEN (GitLab returned an empty eligible-approver list anonymously)
+        author dnsmichi | into main | pipeline failed | updated 2026-06-20
+  !3253  [113d open, 77d idle  << STALE]  Draft: fix(mcp): wrap non-object outputs as valid structuredContent
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3253
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [reviewers] needs 1 more approval(s) of 1
+        - [reviewers] rule * (code_owner) unsatisfied
+        ? not measured: who can satisfy rule * is not visible without a GITLAB_TOKEN (GitLab returned an empty eligible-approver list anonymously)
+        author jhebden | into main | pipeline success | updated 2026-06-20
+  !3254  [113d open, 77d idle  << STALE]  Draft: feat(mcp): close annotation coverage gaps and add coverage test
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3254
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [author] latest pipeline failed
+        author jhebden | into jhebden/mcp-structured-content-fix | pipeline failed | updated 2026-06-20
+  !3255  [113d open, 77d idle  << STALE]  Draft: feat(todo): expose group.full_path on todo list --output json
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3255
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [author] latest pipeline failed
+        author jhebden | into jhebden/mcp-annotation-coverage | pipeline failed | updated 2026-06-20
+  !3256  [113d open, 77d idle  << STALE]  Draft: feat(mr,issue): repo-less list via user-level endpoints
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3256
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [author] latest pipeline failed
+        author jhebden | into jhebden/todo-group-full-path | pipeline failed | updated 2026-06-20
+  !3257  [113d open, 77d idle  << STALE]  Draft: feat(work-items): add view subcommand with widget-based queries
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3257
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [author] latest pipeline failed
+        author jhebden | into jhebden/mr-issue-list-repo-less-scoping | pipeline failed | updated 2026-06-20
+  !3258  [113d open, 77d idle  << STALE]  Draft: feat(work-items): planning-ready list with assignee filter and view columns
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3258
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [author] latest pipeline failed
+        author jhebden | into jhebden/workitems-view | pipeline failed | updated 2026-06-20
+  !3259  [113d open, 77d idle  << STALE]  Draft: [FixPipeline] https://gitlab.com/gitlab-org/cli/-/pipelines/2529199285
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3259
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [author] latest pipeline failed
+        author jhebden | into jhebden/mcp-annotation-coverage | pipeline failed | updated 2026-06-20
+  !3260  [113d open, 77d idle  << STALE]  Draft: [FixPipeline] https://gitlab.com/gitlab-org/cli/-/pipelines/2529199853
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3260
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [author] latest pipeline failed
+        author jhebden | into jhebden/workitems-view | pipeline failed | updated 2026-06-20
+  !3261  [113d open, 77d idle  << STALE]  Draft: [FixPipeline] https://gitlab.com/gitlab-org/cli/-/pipelines/2529199660
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3261
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [author] latest pipeline failed
+        author jhebden | into jhebden/mr-issue-list-repo-less-scoping | pipeline failed | updated 2026-06-20
+  !3400  [88d open, 57d idle  << STALE]  Draft: feat(update): surface release highlights in update nudge
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3400
+        - [author] is still a draft
+        - [reviewers] needs 1 more approval(s) of 1
+        - [reviewers] rule * (code_owner) unsatisfied
+        ? not measured: who can satisfy rule * is not visible without a GITLAB_TOKEN (GitLab returned an empty eligible-approver list anonymously)
+        author mmishaev | into main | pipeline success | updated 2026-07-10
+  !3463  [71d open, 36d idle  << STALE]  Draft: ci: split Go module and build caches
+        https://gitlab.com/gitlab-org/cli/-/merge_requests/3463
+        - [author] is still a draft
+        - [author] has unresolved blocking discussions
+        - [reviewers] needs 1 more approval(s) of 1
+        - [reviewers] rule * (code_owner) unsatisfied
+        ? not measured: who can satisfy rule * is not visible without a GITLAB_TOKEN (GitLab returned an empty eligible-approver list anonymously)
+        author e_forbes | into main | pipeline success | updated 2026-07-31
+
+EMPTY BUCKETS: READY_TO_MERGE, READY_WITH_UNKNOWNS, WAITING_ON_CI, WAITING_ON_REVIEWERS, WAITING_ON_MAINTAINER, WAITING_ON_PROCESS, WAITING_ON_ANOTHER_MR
+
+LISTED BUT NOT GATED (52) - raise max_mrs to include these
+  !3562  discussions_not_resolved  fix(release): report a failed close and remove a partial asset
+  !3690  requested_changes  feat: add session tracking
+  !2777  unchecked  fix: combine the integration test coverage with the unit test coverage
+  !3711  conflict  chore(deps): update module github.com/docker/cli to v29.7.2+incompatible
+  !3716  unchecked  fix(config): match keys only when finding and removing entries
+  !3418  unchecked  refactor: use ListWorkItems from client-go for work-items list
+  !3050  requested_changes  feat: add token_command for dynamic token fetching
+  !3691  draft_status  Draft: [FixPipeline] https://gitlab.com/gitlab-org/cli/-/pipelines/2735663808
+  !3761  not_approved  fix(telemetry): attribute events to the executed command
+  !3686  draft_status  Draft: Agent Identity AI tools
+  !3790  draft_status  Draft: feat(theme): user-configurable color themes
+  !3782  draft_status  Draft: [FixPipeline] https://gitlab.com/gitlab-org/cli/-/pipelines/2787790377
+  !3751  unchecked  refactor(df): tidy policy fake and add verdict.Allowed constant
+  !3305  draft_status  Draft: feat(mr create): add --depends-on flag
+  !3304  unchecked  Draft: feat(mr): add ParseMRRef helper for merge request references
+  !3306  draft_status  Draft: feat(mr update): add --depends-on / --add-depends-on / --remove-depends-on
+  !3763  unchecked  fix(security): resolve real GID before detaching scan profiles
+  !3764  merge_request_blocked  fix(security): report post-processing profiles as active
+  !3701  not_approved  fix(commands): do not offer filename completions if no args taken
+  !3661  not_approved  fix(mr): wait for queued rebase
+  ... and 32 more
+
+ROT LEDGER
+  oldest open        : 197 days
+  median open        : 113 days
+  over 90 days       : 13 of 15
+  idle 14 + days     : 15  (stale_after_days=14)
+  timeline precision : approximate (no token: idle time stands in for blocker age)
+
+REVIEW LOAD - who the queue is actually waiting on
+  waiting on            MRs   oldest   avg age   stale
+  jhebden                 9     113d      113d       9
+  Aayush-Saini            1     197d      197d       1
+  elwyn-gitlab            1     187d      187d       1
+  Ashutosh0x              1     183d      183d       1
+  dnsmichi                1     149d      149d       1
+  mmishaev                1      88d       88d       1
+  e_forbes                1      71d       71d       1
+
+  This is queue load, not performance. An unassigned reviewer slot shows as
+  'unassigned reviewers' - that is a routing gap, not somebody being slow.
+
+Read-only: nothing was approved, merged, rebased, commented or labelled.
+A merge request with no gate result is unknown, not mergeable.

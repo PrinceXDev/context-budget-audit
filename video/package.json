@@ -1,0 +1,28 @@
+{
+  "name": "rote-playoffs-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cinematic demo video for the Rote Playoffs entry - gitlab-mr-gate + gitlab-mr-queue",
+  "scripts": {
+    "dev": "remotion studio",
+    "studio": "remotion studio",
+    "render": "remotion render RoteDemo out/rote-demo.mp4 --concurrency=4",
+    "render:fast": "remotion render RoteDemo out/rote-demo-preview.mp4 --scale=0.5 --jpeg-quality=70",
+    "still": "remotion still RoteDemo out/frame.png",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.394",
+    "@remotion/google-fonts": "4.0.394",
+    "@remotion/media-utils": "4.0.394",
+    "@remotion/shapes": "4.0.394",
+    "@remotion/transitions": "4.0.394",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.394"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "typescript": "5.8.2"
+  }
+}

@@ -24,6 +24,17 @@ rote play run princepanchani/gitlab-mr-gate project=your-group/your-repo mr=123
 rote play run princepanchani/gitlab-mr-queue project=your-group/your-repo
 ```
 
+## Demo video
+
+A ~3:27 walkthrough of both plays lives in [`video/`](./video) — a Remotion
+project. Every terminal window in it replays real captured stdout from
+`rote play run` (kept in `video/public/runs/`); everything outside a terminal is
+explanatory motion graphics. See [`video/README.md`](./video/README.md).
+
+```bash
+cd video && npm install && npm run render     # out/rote-demo.mp4
+```
+
 ## Why GitLab
 
 Every other merge-readiness play in the registry targets GitHub. GitLab publishes

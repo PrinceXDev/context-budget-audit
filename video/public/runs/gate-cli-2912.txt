@@ -1,0 +1,79 @@
+GITLAB MR GATE
+
+  https://gitlab.com/gitlab-org/cli/-/merge_requests/2912
+  fix(mr): include file context in raw output for diff-level comments
+
+VERDICT: BLOCKED
+
+  MR !2912 cannot merge: the branch has merge conflicts. Next move:
+  elwyn-gitlab.
+
+  whose move : elwyn-gitlab
+  detail     : 3 blocker(s): conflicts, approvals, approval_rule
+
+BLOCKERS (3)
+  [conflicts] The branch has merge conflicts.
+      evidence : has_conflicts=true
+      owner    : elwyn-gitlab
+      next     : Rebase or merge the target branch, then resolve the
+                 conflicts.
+  [approvals] Needs 1 more approval(s); 1 required in total.
+      evidence : approvals_left=1 approvals_required=1
+      owner    : reviewers
+      next     : Request review from an eligible approver.
+  [approval_rule] Approval rule * (code_owner) is unsatisfied - it needs 1
+      approval(s).
+      evidence : rule=* type=code_owner approvals_required=1
+                 eligible_approvers=0
+      owner    : reviewers (specific approvers not visible anonymously)
+      next     : Get 1 approval for rule *.
+
+MERGE PATH (what has to happen, in order)
+  1. Rebase or merge the target branch, then resolve the conflicts.
+       who : elwyn-gitlab
+       why : The branch has merge conflicts.
+  2. Get 1 approval for rule *.
+       who : reviewers (specific approvers not visible anonymously)
+       why : Approval rule * (code_owner) is unsatisfied - it needs 1
+             approval(s).
+  3. Request review from an eligible approver.
+       who : reviewers
+       why : Needs 1 more approval(s); 1 required in total.
+
+  Order matters: branch work first, because a later push commonly
+  resets approvals gathered before it.
+
+NOT MEASURED (2)
+  [approval_rule_approvers] who can satisfy rule * is not visible without a
+      GITLAB_TOKEN (GitLab returned an empty
+      eligible-approver list anonymously)
+  [discussions] per-thread detail needs a GITLAB_TOKEN, but the MR's own
+      blocking_discussions_resolved flag reports blocking threads
+      ARE resolved
+
+STAGE LEDGER
+  read      merge_request
+  read      approvals
+  read      approval_rules
+  read      pipeline
+  read      discussions  (via the MR blocking_discussions_resolved flag, readable without a token)
+
+GITLAB SAYS
+  detailed_merge_status : not_approved
+    meaning             : GitLab reports the approval rules are not yet satisfied
+  pipeline              : success
+  approvals             : 1 still needed of 1 required
+  approval rules        : 2 total, unsatisfied: *
+  labels                : category:gitlab cli, devops::ai coding, group::code review, section::ai, type::bug
+
+SELF-CHECK (ran before any live data was judged)
+  39/39 verdict-logic cases passed
+
+VERIFY (re-derived by a different route)
+  CONFIRMED     second_read
+      a fresh read returned the same state the gate reasoned about
+  CONFIRMED     cross_check_detailed_merge_status
+      GitLab also refuses this merge (detailed_merge_status=not_approved)
+
+Read-only: nothing was approved, merged, rebased, commented or labelled.
+A dimension marked 'not read' is unknown, not clean.
