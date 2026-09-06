@@ -11,61 +11,61 @@
  *       rote play run princepanchani/gitlab-mr-gate
  *
  *   That gates a real public merge request and prints a full verdict in about six
- *   seconds, so you can see exactly what this does before deciding whether to point
- *   it at your own. Then point it at your own:
+ *   seconds. Then point it at your own, or at self-hosted GitLab:
  *
  *       rote play run princepanchani/gitlab-mr-gate project=your-group/your-repo mr=123
+ *       rote play run princepanchani/gitlab-mr-gate \
+ *           gitlab_host=invent.kde.org project=frameworks/kio mr=2417
  *
- *   WHAT IT TELLS YOU
+ *   WHAT YOU GET
  *
  *     VERDICT     MERGEABLE, BLOCKED, MERGEABLE_WITH_UNKNOWNS or NOT_OPEN.
- *     MERGE PATH  Not just what is wrong - what has to HAPPEN, in the order it can
- *                 actually happen, and who does each part. Branch work comes before
- *                 approvals, because the next push commonly resets approvals
- *                 gathered too early.
- *     WHOSE MOVE  One name: who the merge is actually waiting on right now.
- *     EVIDENCE    Every blocker names the field that proves it, so "blocked" becomes
- *                 "needs 1 approval from one of the 77 eligible approvers of
+ *     MERGE PATH  Not just what is wrong - what has to HAPPEN, in the order it
+ *                 can happen, and who does each part. Branch work precedes
+ *                 approvals, because the next push commonly resets them.
+ *     WHOSE MOVE  One name: who the merge is waiting on right now.
+ *     EVIDENCE    Every blocker names the field that proves it, so "blocked"
+ *                 becomes "needs 1 approval from one of 77 eligible approvers of
  *                 /app/assets/".
  *
- *   WHY GITLAB
- *
- *   Every other merge-readiness play in this registry targets GitHub. GitLab
- *   publishes detailed_merge_status, its own one-field diagnosis of why a merge is
- *   refused, and GitHub has no equivalent. This play reads it - and then turns it
- *   around and uses it as an independent witness against its own verdict.
- *
- *   IT GATES YOUR TEAM'S RULES TOO
- *
- *   GitLab cannot know that a label like "workflow::in dev" means do not merge. Pass
- *   required_labels and forbidden_labels and those become blockers alongside the
- *   mechanical ones.
+ *   GitLab publishes detailed_merge_status, its own one-field diagnosis of why a
+ *   merge is refused, which GitHub has no equivalent of. This play reads it - then
+ *   uses it as an independent witness against its own verdict. Pass required_labels
+ *   and forbidden_labels to gate your team's rules too.
  *
  *   HOW IT REFUSES TO LIE TO YOU
  *
- *     - 47 bundled self-check cases run BEFORE any live data is judged. If a single
- *       one fails, the verdict is withheld entirely. A gate whose own logic is broken
- *       must refuse rather than guess.
+ *     - 47 self-check cases run BEFORE any live data is judged. If one fails the
+ *       verdict is withheld entirely.
  *     - A verify stage re-derives the headline claims by two routes the gate never
- *       used: a fresh second read, and GitLab's own server-side verdict. A
- *       CONTRADICTED check tells you to trust GitLab and treat the pass as unsafe.
- *     - A dimension it could not read is reported as unknown, never as clean, and the
- *       stage ledger names the route each answer actually came by.
- *     - Merge request titles and descriptions are author-controlled text, carried for
- *       display and read by no rule. An MR whose description asks to be approved
- *       cannot move the verdict.
+ *       used. CONTRADICTED means trust GitLab, not this play.
+ *     - A dimension it could not read is unknown, never clean, and the stage ledger
+ *       names the route each answer came by.
+ *     - Titles and descriptions are author-controlled text, read by no rule.
  *
- *   READ ONLY. It does not approve, merge, rebase, comment, label or write anything.
- *   Needs only python3. No credentials at all on public projects; a private or
- *   self-hosted project uses your own GITLAB_TOKEN read from the environment, sent as
- *   a request header, never as a query string, never printed.
+ *   VERIFIED ON SELF-HOSTED GITLAB, not just gitlab.com: five independent instances
+ *   (KDE, Debian, GNOME, freedesktop, VideoLAN), all Community Edition, where the
+ *   approval-rules endpoint does not exist and returns 404 while every other
+ *   dimension reads fine. Approval rules are then reported as unknown rather than
+ *   mistaken for a missing project.
  *
- *   KNOWN LIMITS, not overclaimed: the token path has been exercised end to end
- *   against a real private gitlab.com project, but a self-hosted gitlab_host is
- *   still unverified - there was no self-hosted instance to test against.
+ *   COMPANION PLAYS. To sweep EVERY open merge request instead of one, use
+ *   princepanchani/gitlab-mr-queue. When the blocker is a red pipeline,
+ *   princepanchani/gitlab-pipeline-triage says which job failed and whether it also
+ *   fails on the target branch.
+ *
+ *   READ ONLY - nothing is approved, merged, rebased, commented or labelled. Needs
+ *   only python3. No credentials on public projects; a private or self-hosted
+ *   project uses your own GITLAB_TOKEN from the environment, sent as a header, never
+ *   in a query string, never printed.
+ *
+ *   KNOWN LIMITS: the token path is exercised end to end against a private
+ *   gitlab.com project, but a token against a self-hosted instance is untested - the
+ *   five instances above were read anonymously.
  * version: 1.4.0
- * source_url: https://play.modiqo.ai/princepanchani/gitlab-mr-gate
+ * source_url: https://github.com/PrinceXDev/context-budget-audit
  * provenance:
+ *   author: Prince Panchani (github.com/PrinceXDev)
  *   workspace: gitlab-mr-gate
  * metadata:
  *   version: 1.4.0
@@ -370,6 +370,40 @@ function wrapLine(text, width, indent) {
   return wrapped.length ? wrapped : [indent];
 }
 
+// The fetch steps report why a dimension could not be measured as a short
+// machine code. A code is the right thing to carry between steps and the wrong
+// thing to show a reader: "not_available" tells a stranger nothing. Translate
+// to a sentence here, and pass anything unrecognised straight through, because
+// some reasons already arrive as full prose from the verdict step.
+const REASON_TEXT = {
+  not_available:
+    "approval rules are a GitLab Premium/Ultimate feature and this endpoint " +
+    "does not exist on Community Edition, which is most self-hosted GitLab",
+  absent: "this GitLab instance has no such endpoint for this merge request",
+  auth_required: "needs a GITLAB_TOKEN with read_api scope",
+  auth_rejected:
+    "the supplied token was refused: it may be expired, lack read_api scope, " +
+    "or not have access to this project",
+  rate_limited: "GitLab is rate limiting these requests; re-run later",
+  server_error: "GitLab returned a server error",
+  http_error: "GitLab returned an unexpected HTTP status",
+  timeout: "GitLab did not respond before the timeout",
+  unreachable: "the GitLab host could not be reached",
+};
+
+function reasonText(reason) {
+  const key = String(reason ?? "").trim();
+  if (!key) return "no reason given";
+  return REASON_TEXT[key] ?? key;
+}
+
+// A negative count is the sentinel for "never measured" and must never reach
+// the reader as a number; "-1 total" reads as a bug, not as an unknown.
+function countOrUnread(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? String(n) : "not read";
+}
+
 const read = readStep(ctx.step(stepName("compute_verdict")));
 const validateRead = readStep(ctx.step(stepName("validate_input")));
 const selfCheckRead = readStep(ctx.step(stepName("self_check")));
@@ -385,12 +419,37 @@ if (read.kind !== "ok") {
     unparseable: "the verdict step output was not readable JSON",
   }[read.kind] ?? "the verdict step output could not be read";
 
+  // "the verdict step did not complete" is true and useless. The reason the run
+  // stopped is almost always a wrong project path or a private project, and the
+  // fetch step already wrote a precise sentence about it to stderr - which
+  // otherwise appears only in the raw runner error line, below the report a
+  // reader is actually looking at. Lift it into the report.
+  // A COMPLETED step carries output.body.stdout.text; a FAILED one carries
+  // output.diagnostic.stderr as a plain string. This branch only ever runs for
+  // the failed case, but read both so it cannot silently render nothing again.
+  const failedStep = ctx.step(stepName("fetch_mr"));
+  const causeText = String(
+    failedStep?.outcome?.output?.diagnostic?.stderr ??
+    failedStep?.outcome?.output?.body?.stderr?.text ??
+    "",
+  ).replace(/^gitlab-mr-gate:\s*/gm, "").trim();
+  const causeLines = causeText
+    ? ["", "WHY", ...wrapLine(causeText.split("\n")[0], 74, "  ")]
+    : [];
+
   out.human(
-    "GITLAB MR GATE\n\n" +
-    "VERDICT: UNAVAILABLE\n\n" +
-    "  " + why + ".\n\n" +
-    "This is not a passing result. Re-run, or use `rote play run ... --resume <run_id>`\n" +
-    "to continue from the steps that did complete.\n",
+    [
+      "GITLAB MR GATE",
+      "",
+      "VERDICT: UNAVAILABLE",
+      "",
+      "  " + why + ".",
+      ...causeLines,
+      "",
+      "This is not a passing result. Re-run, or continue from the steps that did",
+      "complete with `rote play run ... --resume <run_id>`.",
+      "",
+    ].join("\n"),
   );
   out.summary("UNAVAILABLE - " + why);
   out.result({
@@ -500,7 +559,7 @@ if (read.kind !== "ok") {
   } else {
     for (const u of unknowns) {
       const head = "  [" + String(u?.dimension ?? "?") + "] ";
-      const w = wrapLine(u?.reason ?? "", 76 - head.length, "");
+      const w = wrapLine(reasonText(u?.reason), 76 - head.length, "");
       lines.push(head + w[0]);
       for (const l of w.slice(1)) lines.push("      " + l);
     }
@@ -515,9 +574,12 @@ if (read.kind !== "ok") {
       const state = s?.measured ? "read      " : "not read  ";
       // A measured dimension names the route only when it was the weaker one, so
       // the ledger never claims more certainty than the route it actually used.
+      // The ledger is a fixed-width table, so it keeps the terse reason rather
+      // than the full sentence the NOT MEASURED section carries - but an
+      // underscored enum reads as leaked internals, so soften it to words.
       const note = s?.measured
         ? (s?.route ? "  (via " + String(s.route) + ")" : "")
-        : "  (" + String(s?.reason ?? "no reason given") + ")";
+        : "  (" + String(s?.reason ?? "no reason given").replace(/_/g, " ") + ")";
       lines.push("  " + state + String(s?.name ?? "?") + note);
     }
   }
@@ -528,10 +590,15 @@ if (read.kind !== "ok") {
   lines.push("    meaning             : " + String(facts.dms_meaning ?? "?"));
   lines.push("  pipeline              : " + String(facts.pipeline_status ?? "?"));
   lines.push("  approvals             : " +
-    String(facts.approvals_left ?? "?") + " still needed of " +
-    String(facts.approvals_required ?? "?") + " required");
-  lines.push("  approval rules        : " + String(facts.approval_rules_total ?? "?") +
-    " total, unsatisfied: " + (String(facts.approval_rules_unsatisfied ?? "") || "none"));
+    (Number(facts.approvals_required) >= 0
+      ? countOrUnread(facts.approvals_left) + " still needed of " +
+        countOrUnread(facts.approvals_required) + " required"
+      : "not read"));
+  lines.push("  approval rules        : " +
+    (Number(facts.approval_rules_total) >= 0
+      ? countOrUnread(facts.approval_rules_total) + " total, unsatisfied: " +
+        (String(facts.approval_rules_unsatisfied ?? "") || "none")
+      : "not read"));
   lines.push("  labels                : " +
     (Array.isArray(facts.labels) && facts.labels.length ? facts.labels.join(", ") : "none"));
   lines.push("");
