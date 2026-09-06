@@ -62,13 +62,13 @@
  *   KNOWN LIMITS: the token path is exercised end to end against a private
  *   gitlab.com project, but a token against a self-hosted instance is untested - the
  *   five instances above were read anonymously.
- * version: 1.4.0
+ * version: 1.4.1
  * source_url: https://github.com/PrinceXDev/context-budget-audit
  * provenance:
  *   author: Prince Panchani (github.com/PrinceXDev)
  *   workspace: gitlab-mr-gate
  * metadata:
- *   version: 1.4.0
+ *   version: 1.4.1
  *   rote_version: 0.80.0
  *   status: released
  *   kind: atomic
@@ -113,13 +113,13 @@
  *       whose_move:
  *         type: string
  *       merge_path:
- *         type: object
+ *         type: array
  *       blockers:
- *         type: object
+ *         type: array
  *       unknowns:
- *         type: object
+ *         type: array
  *       stages:
- *         type: object
+ *         type: array
  *       facts:
  *         type: object
  *       self_check:
@@ -427,11 +427,18 @@ if (read.kind !== "ok") {
   // A COMPLETED step carries output.body.stdout.text; a FAILED one carries
   // output.diagnostic.stderr as a plain string. This branch only ever runs for
   // the failed case, but read both so it cannot silently render nothing again.
-  const failedStep = ctx.step(stepName("fetch_mr"));
-  const causeText = String(
-    failedStep?.outcome?.output?.diagnostic?.stderr ??
-    failedStep?.outcome?.output?.body?.stderr?.text ??
+  // Validation runs FIRST, and when it rejects the input the fetch step never
+  // runs - so reading only the fetch step's stderr loses the validator's
+  // specific message ("mr must be a positive integer iid, got 'abc'") and
+  // leaves the reader with nothing but "the step did not complete".
+  const stderrOf = (st) => String(
+    st?.outcome?.output?.diagnostic?.stderr ??
+    st?.outcome?.output?.body?.stderr?.text ??
     "",
+  );
+  const causeText = (
+    stderrOf(ctx.step(stepName("validate_input"))) ||
+    stderrOf(ctx.step(stepName("fetch_mr")))
   ).replace(/^gitlab-mr-gate:\s*/gm, "").trim();
   const causeLines = causeText
     ? ["", "WHY", ...wrapLine(causeText.split("\n")[0], 74, "  ")]

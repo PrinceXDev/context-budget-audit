@@ -60,13 +60,13 @@
  *   KNOWN LIMITS: the token path and the exact-timeline route via label events are
  *   exercised end to end, but only against gitlab.com. A token against a self-hosted
  *   instance is untested - the instances above were read anonymously.
- * version: 1.4.0
+ * version: 1.4.1
  * source_url: https://github.com/PrinceXDev/context-budget-audit
  * provenance:
  *   author: Prince Panchani (github.com/PrinceXDev)
  *   workspace: gitlab-mr-gate
  * metadata:
- *   version: 1.4.0
+ *   version: 1.4.1
  *   rote_version: 0.80.0
  *   status: released
  *   kind: atomic
@@ -109,11 +109,11 @@
  *       review_load:
  *         type: object
  *       rows:
- *         type: object
+ *         type: array
  *       not_gated:
- *         type: object
+ *         type: array
  *       no_result:
- *         type: object
+ *         type: array
  *       note:
  *         type: string
  * parameters:
@@ -355,11 +355,18 @@ if (!listData) {
   // reader is told only that something failed, and the actual diagnosis sits
   // below the report in the runner's raw error line. A FAILED step exposes it
   // as output.diagnostic.stderr; a completed one uses the body shape.
-  const listStep = ctx.step(stepName("list_mrs"));
-  const causeText = String(
-    listStep?.outcome?.output?.diagnostic?.stderr ??
-    listStep?.outcome?.output?.body?.stderr?.text ??
+  // Validation runs FIRST, and when it rejects the input the fetch step never
+  // runs - so reading only the fetch step's stderr loses the validator's
+  // specific message ("mr must be a positive integer iid, got 'abc'") and
+  // leaves the reader with nothing but "the step did not complete".
+  const stderrOf = (st) => String(
+    st?.outcome?.output?.diagnostic?.stderr ??
+    st?.outcome?.output?.body?.stderr?.text ??
     "",
+  );
+  const causeText = (
+    stderrOf(ctx.step(stepName("validate_input"))) ||
+    stderrOf(ctx.step(stepName("list_mrs")))
   ).replace(/^gitlab-mr-queue:\s*/gm, "").trim();
 
   out.human(

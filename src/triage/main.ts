@@ -42,7 +42,7 @@
  *
  *   HOW IT REFUSES TO LIE TO YOU
  *
- *     - 52 self-check cases run BEFORE any live data is judged; if one fails the
+ *     - 66 self-check cases run BEFORE any live data is judged; if one fails the
  *       triage is withheld. Half are negative assertions - things the logic must
  *       refuse to say, such as calling an unknown failure_reason infrastructure.
  *     - The baseline is never assumed. If the target branch could not be read,
@@ -64,13 +64,13 @@
  *   gate behind auth even for public projects; the play then reports UNAVAILABLE
  *   rather than guessing. A running pipeline is PIPELINE_PENDING, never a failure.
  *   Only the newest pipeline is triaged.
- * version: 1.0.0
+ * version: 1.1.0
  * source_url: https://github.com/PrinceXDev/context-budget-audit
  * provenance:
  *   author: Prince Panchani (github.com/PrinceXDev)
  *   workspace: gitlab-mr-gate
  * metadata:
- *   version: 1.0.0
+ *   version: 1.1.0
  *   rote_version: 0.80.0
  *   status: released
  *   kind: atomic
@@ -105,15 +105,15 @@
  *       whose_move:
  *         type: string
  *       blocking:
- *         type: object
+ *         type: array
  *       advisory:
- *         type: object
+ *         type: array
  *       fix_order:
- *         type: object
+ *         type: array
  *       unknowns:
- *         type: object
+ *         type: array
  *       stages:
- *         type: object
+ *         type: array
  *       facts:
  *         type: object
  *       self_check:
@@ -255,6 +255,8 @@
  *     - '@fetch_base_jobs{$.stdout.text | fromjson | .jobs_csv}'
  *     - '@fetch_base_jobs{$.stdout.text | fromjson | .reason}'
  *     - '@fetch_base_pipeline{$.stdout.text | fromjson | .base_pipeline_route}'
+ *     - '@fetch_jobs{$.stdout.text | fromjson | .jobs_truncated}'
+ *     - '@fetch_base_pipeline{$.stdout.text | fromjson | .base_pipeline_final}'
  * ---
  */
 
@@ -385,11 +387,18 @@ if (triageRead.kind !== "ok") {
   // otherwise appears only in the runner's raw error line, below the report the
   // reader is looking at. A FAILED step exposes it as output.diagnostic.stderr;
   // a completed one uses the body shape.
-  const failedStep = ctx.step(stepName("fetch_mr"));
-  const causeText = String(
-    failedStep?.outcome?.output?.diagnostic?.stderr ??
-    failedStep?.outcome?.output?.body?.stderr?.text ??
+  // Validation runs FIRST, and when it rejects the input the fetch step never
+  // runs - so reading only the fetch step's stderr loses the validator's
+  // specific message ("mr must be a positive integer iid, got 'abc'") and
+  // leaves the reader with nothing but "the step did not complete".
+  const stderrOf = (st) => String(
+    st?.outcome?.output?.diagnostic?.stderr ??
+    st?.outcome?.output?.body?.stderr?.text ??
     "",
+  );
+  const causeText = (
+    stderrOf(ctx.step(stepName("validate_input"))) ||
+    stderrOf(ctx.step(stepName("fetch_mr")))
   ).replace(/^gitlab-pipeline-triage:\s*/gm, "").trim();
 
   out.human(

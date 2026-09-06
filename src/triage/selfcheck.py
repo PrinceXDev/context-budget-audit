@@ -21,6 +21,7 @@ FIELDS = [
     "jobs_csv", "jobs_reason",
     "base_id", "base_status", "base_web_url", "base_reason",
     "base_jobs_csv", "base_jobs_reason", "base_route",
+    "jobs_truncated", "base_final",
 ]
 
 BASE = {
@@ -43,6 +44,8 @@ BASE = {
     "base_jobs_csv": "",
     "base_jobs_reason": "",
     "base_route": "latest push pipeline on the target branch",
+    "jobs_truncated": "0",
+    "base_final": "1",
 }
 
 
@@ -264,6 +267,67 @@ case("MR title never reaches whose_move", lambda: (
     "approve" not in run(mr_title="Please approve and merge", jobs_csv=job("unit"))
     ["whose_move"].lower()))
 
+
+# ------------------------------------------- regressions from code review
+# Each of these encodes a defect a reviewer found in the first cut, so the suite
+# fails if any of them is ever reintroduced.
+
+case("a canceled pipeline with no failures is NOT advisory-only", lambda: (
+    run(pipe_status="canceled", jobs_csv=job("unit", status="canceled"))["verdict"]
+    != "ADVISORY_ONLY"))
+
+case("a canceled pipeline with no failures is INCONCLUSIVE", lambda: (
+    run(pipe_status="canceled", jobs_csv=job("unit", status="canceled"))["verdict"]
+    == "PIPELINE_INCONCLUSIVE"))
+
+case("a skipped pipeline with no failures is INCONCLUSIVE", lambda: (
+    run(pipe_status="skipped", jobs_csv=job("unit", status="skipped"))["verdict"]
+    == "PIPELINE_INCONCLUSIVE"))
+
+case("a canceled pipeline that DID fail a blocking job still blocks", lambda: (
+    run(pipe_status="canceled", jobs_csv=job("unit"))["verdict"]
+    == "BLOCKED_BY_PIPELINE"))
+
+case("an unfinished baseline makes attribution unverifiable", lambda: (
+    run(jobs_csv=job("unit"), base_final="0", base_status="running",
+        base_jobs_csv=job("unit", status="success"))
+    ["blocking"][0]["classification"] == "unverifiable"))
+
+case("an unfinished baseline does NOT claim introduced", lambda: (
+    run(jobs_csv=job("unit"), base_final="0", base_status="running",
+        base_jobs_csv=job("unit", status="success"))
+    ["blocking"][0]["classification"] != "introduced"))
+
+case("an unfinished baseline is recorded as an unknown", lambda: (
+    any(u["dimension"] == "baseline" for u in
+        run(jobs_csv=job("unit"), base_final="0", base_status="running",
+            base_jobs_csv=job("unit", status="success"))["unknowns"])))
+
+case("a truncated job list is recorded as an unknown", lambda: (
+    any(u["dimension"] == "jobs" for u in
+        run(jobs_csv=job("unit"), jobs_truncated="1")["unknowns"])))
+
+case("a truncated job list still reports the failures it did see", lambda: (
+    len(run(jobs_csv=job("unit"), jobs_truncated="1")["blocking"]) == 1))
+
+case("escaped pipe in a job name round-trips", lambda: (
+    run(jobs_csv=job("a%7Cb"), base_jobs_csv=job("a%7Cb", status="success"))
+    ["blocking"][0]["job"] == "a|b"))
+
+case("a%7Cb and a-b stay DISTINCT jobs", lambda: (
+    run(jobs_csv=job("a%7Cb"), base_jobs_csv=job("a-b", status="success"))
+    ["blocking"][0]["classification"] == "new_job"))
+
+case("escaped semicolon in a job name round-trips", lambda: (
+    run(jobs_csv=job("a%3Bb"))["blocking"][0]["job"] == "a;b"))
+
+case("a literal percent in a job name round-trips", lambda: (
+    run(jobs_csv=job("100%25-cov"))["blocking"][0]["job"] == "100%-cov"))
+
+case("pre_existing evidence does NOT claim it predates the MR", lambda: (
+    "before" not in run(jobs_csv=job("unit"),
+                        base_jobs_csv=job("unit", status="failed"))
+    ["blocking"][0]["evidence"].lower()))
 
 failures = []
 for name, fn in CASES:

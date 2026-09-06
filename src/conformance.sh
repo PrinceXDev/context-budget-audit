@@ -73,25 +73,41 @@ gate_row() {
     "$mark" "$label" "${verdict:-<none>}" "$selfcheck"
 }
 
-# queue_row <label> <expected-substring-anywhere-in-report> [params...]
+# queue_row <label> <LIVE|expected-substring> [params...]
+#
+# This used to grep for "GITLAB MR QUEUE", which is the report's own HEADING and
+# therefore present even on an UNAVAILABLE run - so every queue row passed
+# unconditionally, and the exit status was discarded too. A LIVE row now
+# requires a clean exit AND the absence of an UNAVAILABLE verdict.
 queue_row() {
   local label="$1" expect="$2"
   shift 2
-  local out mark
+  local out mark rc unavailable
   out="$(rote play run "$QUEUE" "$@" 2>&1)"
-  if printf '%s' "$out" | grep -q "$expect"; then
-    mark=ok
-    pass=$((pass + 1))
+  rc=$?
+  unavailable=no
+  printf '%s' "$out" | grep -qE '^UNAVAILABLE$' && unavailable=yes
+
+  if [ "$expect" = "LIVE" ]; then
+    if [ "$rc" -eq 0 ] && [ "$unavailable" = no ] \
+       && printf '%s' "$out" | grep -q 'GITLAB MR QUEUE'; then
+      mark=ok; pass=$((pass + 1))
+    else
+      mark=FAIL; fail=$((fail + 1))
+    fi
+  elif printf '%s' "$out" | grep -q "$expect"; then
+    mark=ok; pass=$((pass + 1))
   else
-    mark=FAIL
-    fail=$((fail + 1))
+    mark=FAIL; fail=$((fail + 1))
   fi
+
   # Widest line in the report, to catch anything that runs off a terminal. The
   # runner's own raw "error:" trailer is not the play's output and is not
   # wrappable by the play, so stop measuring there.
   local widest
   widest="$(printf '%s' "$out" | sed -n '/^GITLAB MR QUEUE/,$p' | sed '/^error:/,$d' | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')"
-  printf '%-4s %-32s %-20s widest:%s\n' "$mark" "$label" "matched" "$widest"
+  printf '%-4s %-32s %-22s widest:%s\n' \
+    "$mark" "$label" "rc=$rc unavail=$unavailable" "$widest"
 }
 
 echo "== gate: gitlab.com (Enterprise Edition: approval rules ARE readable) =="
@@ -116,10 +132,10 @@ gate_row "non-numeric mr"         "UNAVAILABLE" project=gitlab-org/cli mr=abc
 
 echo
 echo "== queue =="
-queue_row "gitlab.com zero-arg demo" "GITLAB MR QUEUE"
+queue_row "gitlab.com zero-arg demo" "LIVE"
 queue_row "KDE self-hosted (CE)"     "not_available"   gitlab_host=invent.kde.org project=frameworks/kio max_mrs=4
-queue_row "empty result set"         "GITLAB MR QUEUE" project=gitlab-org/cli target_branch=no-such-branch-xyz9
-queue_row "nonexistent project"      "GITLAB MR QUEUE" project=gitlab-org/no-such-proj-xyz9
+queue_row "empty result set"         "LIVE"            project=gitlab-org/cli target_branch=no-such-branch-xyz9
+queue_row "nonexistent project"      "UNAVAILABLE"     project=gitlab-org/no-such-proj-xyz9
 
 
 # triage_row <label> <expected-verdict-substring> [params...]
@@ -131,7 +147,7 @@ triage_row() {
   local out verdict selfcheck widest mark
   out="$(rote play run "$TRIAGE" "$@" 2>&1)"
   verdict="$(printf '%s' "$out" | grep -m1 '^VERDICT:' | sed 's/^VERDICT: //')"
-  selfcheck="$(printf '%s' "$out" | grep -c '52/52 triage-logic cases passed')"
+  selfcheck="$(printf '%s' "$out" | grep -c '66/66 triage-logic cases passed')"
   widest="$(printf '%s' "$out" | sed -n '/^GITLAB PIPELINE TRIAGE/,$p' | sed '/^error:/,$d' \
     | grep -v 'https\{0,1\}://' \
     | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')"

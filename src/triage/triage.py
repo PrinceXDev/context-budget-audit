@@ -6,8 +6,11 @@
      pipeline is red but nothing is actually blocked;
   2. a job failed because a runner died, timed out or was descheduled, which is
      not a code problem and a retry may simply clear it;
-  3. a job failed that ALSO fails on the target branch, so it was broken before
-     this merge request existed and fixing it is not this author's move.
+  3. a job failed that ALSO fails on the target branch right now, so fixing it
+     is not this author's move. Note the tense: the comparison is against the
+     branch's current pipeline, which may be NEWER than this merge request's, so
+     this bucket cannot claim the failure came first - only that it is not
+     unique to this branch.
 
 Only what is left after those three is the author's actual work. This module
 separates them, and it does it from data alone - no heuristics over log text,
@@ -45,6 +48,11 @@ base_jobs_reason = arg(18)
 # Which target-branch pipeline the baseline came from. Reported rather than
 # assumed, because a scheduled run and a push run answer different questions.
 base_route      = arg(19)
+# 1 when the job list hit the paging ceiling, so it is known-incomplete.
+jobs_truncated  = arg(20, "0")
+# 1 when the baseline pipeline had actually FINISHED. An unfinished baseline has
+# an incomplete job list, which would make a not-yet-started job look absent.
+base_final      = arg(21, "1")
 
 
 def as_int(text, fallback=-1):
@@ -83,6 +91,14 @@ UPSTREAM_REASONS = {
 }
 
 
+def unescape(field):
+    """Reverse of fetch.py clean(). Order matters: %25 must come LAST, or a
+    literal "%7C" in a job name would be decoded twice into a delimiter."""
+    return (field.replace("%7C", "|")
+                 .replace("%3B", ";")
+                 .replace("%25", "%"))
+
+
 def unpack(csv):
     """Reverse of fetch.py pack_jobs(). Tolerates a trailing separator."""
     rows = []
@@ -96,11 +112,11 @@ def unpack(csv):
         while len(parts) < 5:
             parts.append("")
         rows.append({
-            "name": parts[0],
-            "stage": parts[1],
-            "status": parts[2],
+            "name": unescape(parts[0]),
+            "stage": unescape(parts[1]),
+            "status": unescape(parts[2]),
             "allow_failure": parts[3] == "1",
-            "failure_reason": parts[4],
+            "failure_reason": unescape(parts[4]),
         })
     return rows
 
@@ -134,6 +150,15 @@ elif as_int(base_id) < 0:
 elif not base_jobs:
     baseline = "absent"
     unknown("baseline", "the target branch pipeline reported no jobs")
+elif base_final != "1":
+    # Comparing against a pipeline that is still running would call a job that
+    # simply has not started yet "absent from the target branch", and pin a
+    # failure on the author on that basis.
+    baseline = "in_progress"
+    unknown("baseline",
+            "the newest comparable pipeline on " + (mr_target or "the target branch") +
+            " has not finished (status " + (base_status or "unknown") + "), so its job "
+            "list is incomplete and nothing is attributed from it")
 else:
     baseline = "readable"
 
@@ -178,8 +203,13 @@ def classify(job):
                 "This job exists only on this branch, so nothing rules the change "
                 "out as the cause.")
     if twin["status"] == "failed":
+        # Deliberately present tense. This compares against the target branch's
+        # CURRENT pipeline, which may be newer than this merge request's - so a
+        # failure someone pushed to the target after this MR ran also lands
+        # here. "Also failing there now" is provable; "was broken first" is not.
         return ("pre_existing",
-                job["name"] + " also fails on " + (mr_target or "the target branch"),
+                job["name"] + " also fails on " + (mr_target or "the target branch") +
+                " in the pipeline this run compared against",
                 "whoever broke " + (mr_target or "the target branch"),
                 "Not this merge request's move: fix it on " +
                 (mr_target or "the target branch") + ", or rebase once it is fixed.")
@@ -217,6 +247,10 @@ for job in failed_jobs:
     # anything to a team.
     (advisory if job["allow_failure"] else blocking).append(record)
 
+if jobs_truncated == "1":
+    unknown("jobs",
+            "the pipeline has more jobs than this run was willing to page through, so "
+            "a failure beyond the ceiling would not appear here")
 if jobs_reason:
     unknown("jobs", jobs_reason or "the pipeline's jobs could not be read")
 if pipe_reason:
@@ -282,11 +316,21 @@ elif blocking:
     tail = ("; " + ", ".join(bits) + ".") if bits else "."
     headline = ("%d job%s blocking this merge request%s"
                 % (len(blocking), "s are" if len(blocking) != 1 else " is", tail))
-else:
+elif advisory:
     verdict = "ADVISORY_ONLY"
     headline = ("The pipeline is red, but every failed job is marked allow_failure, "
                 "so none of them blocks the merge.")
     whose_move = "nobody - no failing job blocks this merge request"
+else:
+    # Reached when the pipeline is neither green, pending, nor failed - canceled
+    # or skipped - and no failed job was found. Calling that ADVISORY_ONLY would
+    # assert "every failure was allowed" when there was no failure at all.
+    verdict = "PIPELINE_INCONCLUSIVE"
+    headline = ("The pipeline is %s and reported no failed job, so there is nothing "
+                "to attribute." % pipe_status)
+    whose_move = ("whoever cancelled or skipped it"
+                  if pipe_status in ("canceled", "skipped")
+                  else "nobody - the pipeline reached no conclusion")
 
 # ------------------------------------------------------------- fix order
 # Cheapest-first, then the author's real work, then what is not theirs at all.
@@ -349,5 +393,7 @@ print(json.dumps({
         "base_pipeline_web_url": base_web_url,
         "base_job_count": len(base_jobs),
         "base_pipeline_route": base_route,
+        "base_pipeline_final": base_final == "1",
+        "jobs_truncated": jobs_truncated == "1",
     },
 }))
