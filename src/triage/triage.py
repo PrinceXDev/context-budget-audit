@@ -53,6 +53,11 @@ jobs_truncated  = arg(20, "0")
 # 1 when the baseline pipeline had actually FINISHED. An unfinished baseline has
 # an incomplete job list, which would make a not-yet-started job look absent.
 base_final      = arg(21, "1")
+# Timestamps and provenance of the baseline. Together these decide whether
+# "already broken" is a claim this play is entitled to make.
+pipe_created    = arg(22)
+base_created    = arg(23)
+base_at_mb      = arg(24, "0")
 
 
 def as_int(text, fallback=-1):
@@ -203,16 +208,38 @@ def classify(job):
                 "This job exists only on this branch, so nothing rules the change "
                 "out as the cause.")
     if twin["status"] == "failed":
-        # Deliberately present tense. This compares against the target branch's
-        # CURRENT pipeline, which may be newer than this merge request's - so a
-        # failure someone pushed to the target after this MR ran also lands
-        # here. "Also failing there now" is provable; "was broken first" is not.
-        return ("pre_existing",
+        # "Already broken, not your move" is only defensible when the baseline
+        # PROVABLY predates this merge request's changes. Two ways to establish
+        # that, in order of strength:
+        #
+        #   1. the baseline IS the merge base - the commit this branch grew
+        #      from - so the failure existed before a single line was changed;
+        #   2. failing that, the baseline pipeline ran no later than this merge
+        #      request's, so it cannot contain a regression pushed afterwards.
+        #
+        # Otherwise the two failures are merely concurrent: someone may have
+        # broken the target AFTER this pipeline ran, and this job may still be
+        # this change's fault. Saying "not your move" there hands the author a
+        # free pass on their own bug, so it gets its own honest bucket.
+        provable = base_at_mb == "1" or (
+            bool(base_created) and bool(pipe_created) and base_created <= pipe_created)
+        if provable:
+            where = ("the merge base this branch grew from" if base_at_mb == "1"
+                     else "a target-branch pipeline that ran before this one")
+            return ("pre_existing",
+                    job["name"] + " also fails on " + (mr_target or "the target branch") +
+                    ", in " + where + ", so it predates this change",
+                    "whoever broke " + (mr_target or "the target branch"),
+                    "Not this merge request's move: fix it on " +
+                    (mr_target or "the target branch") + ", or rebase once it is fixed.")
+        return ("also_failing_on_target",
                 job["name"] + " also fails on " + (mr_target or "the target branch") +
-                " in the pipeline this run compared against",
-                "whoever broke " + (mr_target or "the target branch"),
-                "Not this merge request's move: fix it on " +
-                (mr_target or "the target branch") + ", or rebase once it is fixed.")
+                ", but only in a pipeline NEWER than this one, so which change "
+                "broke it is not established",
+                "unclear - it fails on both, and the comparison cannot say which came first",
+                "Compare the two failures before reassigning this. Re-running the "
+                "pipeline on " + (mr_target or "the target branch") + " at this "
+                "merge request's merge base would settle it.")
     if twin["status"] == "success":
         return ("introduced",
                 job["name"] + " passes on " + (mr_target or "the target branch") +
@@ -298,6 +325,9 @@ elif blocking:
         whose_move = "whoever owns the CI runners"
     elif all(k == "pre_existing" for k in kinds):
         whose_move = "whoever broke " + (mr_target or "the target branch")
+    elif all(k in ("pre_existing", "also_failing_on_target") for k in kinds):
+        whose_move = ("unclear - these jobs fail on " + (mr_target or "the target branch") +
+                      " too, but not provably before this change")
     elif all(k == "upstream" for k in kinds):
         whose_move = "whoever owns the pipeline configuration"
     else:
@@ -337,7 +367,7 @@ else:
 # A retry that clears an infrastructure failure can turn the pipeline green
 # without anybody reading code, so it goes first.
 ORDER = {"infrastructure": 0, "upstream": 1, "introduced": 2, "new_job": 3,
-         "unverifiable": 4, "pre_existing": 5}
+         "unverifiable": 4, "also_failing_on_target": 5, "pre_existing": 6}
 fix_order = []
 for record in sorted(blocking, key=lambda r: ORDER.get(r["classification"], 9)):
     fix_order.append({
@@ -394,6 +424,9 @@ print(json.dumps({
         "base_job_count": len(base_jobs),
         "base_pipeline_route": base_route,
         "base_pipeline_final": base_final == "1",
+        "base_at_merge_base": base_at_mb == "1",
+        "pipeline_created_at": pipe_created,
+        "base_pipeline_created_at": base_created,
         "jobs_truncated": jobs_truncated == "1",
     },
 }))

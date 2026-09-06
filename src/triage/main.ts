@@ -21,14 +21,14 @@
  *
  *   It is four, and they belong to different people:
  *
- *     ALLOWED       A job GitLab was told not to care about (allow_failure) turns
- *                   the pipeline red and blocks nothing. Teams stop trusting red
- *                   pipelines because nobody separates these.
+ *     ALLOWED       A job marked allow_failure turns the pipeline red and blocks
+ *                   nothing. Teams stop trusting red pipelines because nobody
+ *                   separates these out.
  *     INFRA         failure_reason=runner_system_failure or stuck_or_timeout is a
  *                   runner that died, not code that broke. A retry may clear it;
  *                   reading the diff never will.
- *     PRE-EXISTING  A job that ALSO fails on the target branch was broken before
- *                   this MR existed. Not this author's move.
+ *     PRE-EXISTING  A job that ALSO fails at this branch's MERGE BASE was broken
+ *                   before a line changed, so it is not this author's move.
  *     YOURS         What is left. This play names it.
  *
  *   WHAT YOU GET
@@ -36,25 +36,25 @@
  *     VERDICT     BLOCKED_BY_PIPELINE, ADVISORY_ONLY, PIPELINE_GREEN,
  *                 PIPELINE_PENDING, NO_PIPELINE, NOT_OPEN or UNAVAILABLE.
  *     PER JOB     Name, stage, whether it blocks, category, evidence.
- *     FIX ORDER   Cheapest first: retries, then what this change broke, then what
- *                 was already broken and is not yours.
+ *     FIX ORDER   Cheapest first: retries, then what this change broke, then
+ *                 what was already broken and is not yours.
  *     WHOSE MOVE  One name.
  *
  *   HOW IT REFUSES TO LIE TO YOU
  *
- *     - 66 self-check cases run BEFORE any live data is judged; if one fails the
+ *     - 74 self-check cases run BEFORE any live data is judged; if one fails the
  *       triage is withheld. Half are negative assertions - things the logic must
  *       refuse to say, such as calling an unknown failure_reason infrastructure.
- *     - The baseline is never assumed. If the target branch could not be read,
- *       every failure is unverifiable rather than pinned on the author, and the
- *       report names which target-branch pipeline it compared against - a push and
- *       a scheduled run answer different questions.
+ *     - The baseline is the pipeline at the MERGE BASE, so "already broken" is
+ *       provable rather than assumed. If only a branch-tip pipeline exists and it
+ *       ran LATER than this one, the job is reported as failing on both with the
+ *       cause unproven - not blamed on whoever touched the target. If no baseline
+ *       can be read, nothing is attributed.
  *     - Job logs are never read: every judgement comes from GitLab's own
  *       structured fields, not unbounded author-controlled text.
  *
- *   COMPANION PLAYS. For whether the MR can merge at all - approvals, discussions,
- *   conflicts, drafts - use princepanchani/gitlab-mr-gate. To sweep every open merge
- *   request, use princepanchani/gitlab-mr-queue.
+ *   COMPANION PLAYS. For whether the MR can merge at all use
+ *   princepanchani/gitlab-mr-gate; to sweep every open MR, gitlab-mr-queue.
  *
  *   READ ONLY - nothing is retried, cancelled, approved or merged. Needs only
  *   python3. No credentials on public projects; a private or self-hosted project
@@ -209,8 +209,9 @@
  *     - '@resource{fetch.py}'
  *     - base_pipeline
  *     - '@validate_input{$.stdout.text | fromjson | .api_base}'
- *     - '@fetch_mr{$.stdout.text | fromjson | .target_branch}'
+ *     - '@fetch_mr{$.stdout.text | fromjson | .base_sha}'
  *     - $timeout_s
+ *     - '@fetch_mr{$.stdout.text | fromjson | .target_branch}'
  *   fetch_base_jobs:
  *     type: process.exec
  *     timeout_ms: 130000
@@ -257,6 +258,9 @@
  *     - '@fetch_base_pipeline{$.stdout.text | fromjson | .base_pipeline_route}'
  *     - '@fetch_jobs{$.stdout.text | fromjson | .jobs_truncated}'
  *     - '@fetch_base_pipeline{$.stdout.text | fromjson | .base_pipeline_final}'
+ *     - '@fetch_pipelines{$.stdout.text | fromjson | .pipeline_created_at}'
+ *     - '@fetch_base_pipeline{$.stdout.text | fromjson | .base_pipeline_created_at}'
+ *     - '@fetch_base_pipeline{$.stdout.text | fromjson | .base_at_merge_base}'
  * ---
  */
 
@@ -367,6 +371,7 @@ const CLASS_LABEL = {
   infrastructure: "infrastructure, not code",
   upstream: "upstream pipeline configuration",
   new_job: "no baseline to compare against",
+  also_failing_on_target: "also failing on the target branch, cause unproven",
   unverifiable: "cannot be attributed",
 };
 

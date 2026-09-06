@@ -22,6 +22,7 @@ FIELDS = [
     "base_id", "base_status", "base_web_url", "base_reason",
     "base_jobs_csv", "base_jobs_reason", "base_route",
     "jobs_truncated", "base_final",
+    "pipe_created", "base_created", "base_at_mb",
 ]
 
 BASE = {
@@ -46,6 +47,10 @@ BASE = {
     "base_route": "latest push pipeline on the target branch",
     "jobs_truncated": "0",
     "base_final": "1",
+    # By default the baseline IS the merge base, which is the strong case.
+    "pipe_created": "2026-05-02T10:00:00.000Z",
+    "base_created": "2026-05-01T10:00:00.000Z",
+    "base_at_mb": "1",
 }
 
 
@@ -328,6 +333,63 @@ case("pre_existing evidence does NOT claim it predates the MR", lambda: (
     "before" not in run(jobs_csv=job("unit"),
                         base_jobs_csv=job("unit", status="failed"))
     ["blocking"][0]["evidence"].lower()))
+
+# ------------------------------------- finding 4: provable precedence only
+# "Already broken on the target branch, not your move" is only defensible when
+# the baseline provably predates this change. These cases hold that line.
+
+case("baseline AT the merge base is pre_existing", lambda: (
+    run(jobs_csv=job("unit"), base_at_mb="1",
+        base_jobs_csv=job("unit", status="failed"))
+    ["blocking"][0]["classification"] == "pre_existing"))
+
+case("branch-tip baseline OLDER than this pipeline is still pre_existing", lambda: (
+    run(jobs_csv=job("unit"), base_at_mb="0",
+        base_created="2026-05-01T10:00:00.000Z",
+        pipe_created="2026-05-02T10:00:00.000Z",
+        base_jobs_csv=job("unit", status="failed"))
+    ["blocking"][0]["classification"] == "pre_existing"))
+
+case("branch-tip baseline NEWER than this pipeline is NOT pre_existing", lambda: (
+    run(jobs_csv=job("unit"), base_at_mb="0",
+        base_created="2026-05-03T10:00:00.000Z",
+        pipe_created="2026-05-02T10:00:00.000Z",
+        base_jobs_csv=job("unit", status="failed"))
+    ["blocking"][0]["classification"] == "also_failing_on_target"))
+
+case("a newer branch-tip baseline does NOT blame the target branch", lambda: (
+    "whoever broke" not in run(
+        jobs_csv=job("unit"), base_at_mb="0",
+        base_created="2026-05-03T10:00:00.000Z",
+        pipe_created="2026-05-02T10:00:00.000Z",
+        base_jobs_csv=job("unit", status="failed"))["blocking"][0]["owner"]))
+
+case("a newer branch-tip baseline does NOT say 'not this MR's move'", lambda: (
+    "not this merge request" not in run(
+        jobs_csv=job("unit"), base_at_mb="0",
+        base_created="2026-05-03T10:00:00.000Z",
+        pipe_created="2026-05-02T10:00:00.000Z",
+        base_jobs_csv=job("unit", status="failed"))["blocking"][0]["next"].lower()))
+
+case("missing timestamps do NOT grant precedence", lambda: (
+    run(jobs_csv=job("unit"), base_at_mb="0", base_created="", pipe_created="",
+        base_jobs_csv=job("unit", status="failed"))
+    ["blocking"][0]["classification"] == "also_failing_on_target"))
+
+case("the author's own job is ordered before an unattributable one", lambda: (
+    [f["job"] for f in run(
+        jobs_csv=";".join([job("ambiguous"), job("mine")]),
+        base_at_mb="0",
+        base_created="2026-05-03T10:00:00.000Z",
+        pipe_created="2026-05-02T10:00:00.000Z",
+        base_jobs_csv=";".join([job("ambiguous", status="failed"),
+                                job("mine", status="success")]))["fix_order"]]
+    == ["mine", "ambiguous"]))
+
+case("pre_existing at the merge base DOES say it predates the change", lambda: (
+    "predates" in run(jobs_csv=job("unit"), base_at_mb="1",
+                      base_jobs_csv=job("unit", status="failed"))
+    ["blocking"][0]["evidence"]))
 
 failures = []
 for name, fn in CASES:

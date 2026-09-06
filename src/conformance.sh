@@ -147,7 +147,7 @@ triage_row() {
   local out verdict selfcheck widest mark
   out="$(rote play run "$TRIAGE" "$@" 2>&1)"
   verdict="$(printf '%s' "$out" | grep -m1 '^VERDICT:' | sed 's/^VERDICT: //')"
-  selfcheck="$(printf '%s' "$out" | grep -c '66/66 triage-logic cases passed')"
+  selfcheck="$(printf '%s' "$out" | grep -c '74/74 triage-logic cases passed')"
   widest="$(printf '%s' "$out" | sed -n '/^GITLAB PIPELINE TRIAGE/,$p' | sed '/^error:/,$d' \
     | grep -v 'https\{0,1\}://' \
     | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')"

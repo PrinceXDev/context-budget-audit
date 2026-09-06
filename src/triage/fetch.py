@@ -22,6 +22,11 @@ selector = sys.argv[3] if len(sys.argv) > 3 else ""
 # introduced/pre-existing ownership call downstream. Encode it.
 selector_q = urllib.parse.quote(str(selector), safe="")
 
+# Only base_pipeline uses this: the target branch, as a FALLBACK when the merge
+# base has no pipeline of its own.
+fallback_ref = sys.argv[5] if len(sys.argv) > 5 else ""
+fallback_ref_q = urllib.parse.quote(str(fallback_ref), safe="")
+
 try:
     timeout = float(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else 25.0
 except ValueError:
@@ -34,12 +39,16 @@ PATHS = {
     "mr_pipelines":  "/merge_requests/" + selector + "/pipelines?per_page=20",
     # selector is a pipeline id here.
     "jobs":          "/pipelines/" + selector + "/jobs?per_page=100",
-    # selector is a branch name here; GitLab wants it as a ref query. Ten are
-    # fetched rather than one because the NEWEST pipeline on a branch is often a
-    # scheduled or security-policy run whose job list does not resemble what a
-    # push builds - comparing against it would report half the jobs as having no
-    # baseline. pick_base() below chooses a comparable one.
-    "base_pipeline": "/pipelines?per_page=10&ref=" + selector_q,
+    # selector is the MERGE BASE sha here - the commit this merge request
+    # branched from. That is the only baseline that can honestly answer "was
+    # this already broken before my change?", because the branch's CURRENT
+    # pipeline may be newer than the merge request's and may carry a regression
+    # somebody else pushed afterwards. Ten are fetched rather than one because
+    # a given commit can have several pipelines (push, schedule, security
+    # policy) whose job lists differ; pick_base() chooses a comparable one.
+    "base_pipeline": "/pipelines?per_page=10&sha=" + selector_q,
+    # Fallback, used only when the merge base has no pipeline at all.
+    "base_pipeline_by_ref": "/pipelines?per_page=10&ref=" + fallback_ref_q,
 }
 
 # GitLab caps per_page at 100 and pages the rest. A pipeline with more than 100
@@ -59,19 +68,27 @@ SHAPE = {
     "mr": {
         "state": "unmeasured", "source_branch": "", "target_branch": "",
         "web_url": "", "author": "", "sha": "", "title_display_only": "",
-        "detailed_merge_status": "unmeasured",
+        "detailed_merge_status": "unmeasured", "base_sha": "",
     },
     "mr_pipelines": {
         "pipeline_id": -1, "pipeline_status": "unmeasured", "pipeline_web_url": "",
         "pipeline_sha": "", "pipeline_source": "", "pipeline_count": -1,
+        "pipeline_created_at": "",
     },
     "jobs": {"jobs_csv": "", "job_count": -1, "failed_count": -1, "jobs_truncated": 0},
     "base_pipeline": {
         "base_pipeline_id": -1, "base_pipeline_status": "unmeasured",
         "base_pipeline_web_url": "", "base_pipeline_source": "",
         "base_pipeline_route": "", "base_pipeline_final": 0,
+        "base_pipeline_created_at": "",
+        # 1 when the baseline really is the merge base, so a failure there
+        # provably predates this merge request's changes. 0 when we had to fall
+        # back to the branch tip, where it provably does not.
+        "base_at_merge_base": 0,
     },
 }
+
+SHAPE["base_pipeline_by_ref"] = SHAPE["base_pipeline"]
 
 if kind not in PATHS:
     sys.stderr.write("gitlab-pipeline-triage: unknown dimension %r\n" % kind)
@@ -243,6 +260,9 @@ if kind == "mr":
         "sha": str(raw.get("sha") or ""),
         "title_display_only": str(raw.get("title") or ""),
         "detailed_merge_status": str(raw.get("detailed_merge_status") or "unmeasured"),
+        # The commit this merge request branched from. The baseline pipeline is
+        # looked up at THIS sha, not at the branch tip.
+        "base_sha": str((raw.get("diff_refs") or {}).get("base_sha") or ""),
     })
 
 elif kind == "mr_pipelines":
@@ -264,6 +284,7 @@ elif kind == "mr_pipelines":
         "pipeline_sha": str(latest.get("sha") or ""),
         "pipeline_source": str(latest.get("source") or ""),
         "pipeline_count": len(items),
+        "pipeline_created_at": str(latest.get("created_at") or ""),
     })
 
 elif kind == "jobs":
@@ -280,8 +301,16 @@ elif kind == "jobs":
 
 elif kind == "base_pipeline":
     items = raw if isinstance(raw, list) else []
+    at_merge_base = bool(items)
+    if not items and fallback_ref:
+        # No pipeline ever ran at the merge base. Fall back to the branch tip,
+        # which is still informative - but it CANNOT establish that a failure
+        # predates this merge request, and the record says so.
+        items = fetch_all(PATHS["base_pipeline_by_ref"])
+        items = items if isinstance(items, list) else []
     if not items:
-        emit(True, "", "no pipeline has run on the target branch", {})
+        emit(True, "",
+             "no pipeline ran at the merge base or on the target branch", {})
         raise SystemExit(0)
 
     # A pipeline still in flight has an incomplete job list, so comparing
@@ -311,13 +340,16 @@ elif kind == "base_pipeline":
                         continue
                     if require_final and str(candidate.get("status")) not in FINAL:
                         continue
-                    return candidate, "latest %s%s pipeline on the target branch" % (
+                    return candidate, "latest %s%s pipeline" % (
                         "" if require_final else "unfinished ", preferred)
         return (candidates[0],
-                "newest pipeline on the target branch (no push pipeline found, so the "
-                "job lists may not be comparable)")
+                "newest pipeline of any kind (no push pipeline found, so the job "
+                "lists may not be comparable)")
 
     chosen, route = pick_base(items)
+    route = (("the merge base commit, " + route) if at_merge_base
+             else ("the TARGET BRANCH TIP rather than the merge base, " + route +
+                   " - so it cannot establish that a failure predates this change"))
     emit(True, "", "", {
         "base_pipeline_id": int(chosen.get("id") or -1),
         "base_pipeline_status": str(chosen.get("status") or "unmeasured"),
@@ -325,4 +357,6 @@ elif kind == "base_pipeline":
         "base_pipeline_source": str(chosen.get("source") or ""),
         "base_pipeline_route": route,
         "base_pipeline_final": 1 if str(chosen.get("status")) in FINAL else 0,
+        "base_pipeline_created_at": str(chosen.get("created_at") or ""),
+        "base_at_merge_base": 1 if at_merge_base else 0,
     })
