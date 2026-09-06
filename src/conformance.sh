@@ -57,20 +57,27 @@ matches() {
 gate_row() {
   local label="$1" expect="$2"
   shift 2
-  local out verdict selfcheck
+  local out verdict selfcheck widest
   out="$(rote play run "$GATE" "$@" 2>&1)"
   verdict="$(printf '%s' "$out" | grep -m1 '^VERDICT:' | sed 's/^VERDICT: //')"
   selfcheck="$(printf '%s' "$out" | grep -c '47/47 verdict-logic cases passed')"
+  # The gate was the ONE play whose report width was never measured, which is
+  # exactly why three unwrapped live-data lines survived into a published
+  # version. URLs are exempt: a hard newline through one stops a terminal
+  # making it clickable.
+  widest="$(printf '%s' "$out" | sed -n '/^GITLAB MR GATE/,$p' | sed '/^error:/,$d' \
+    | grep -v '://' \
+    | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')"
   local mark
-  if matches "$verdict" "$expect"; then
+  if matches "$verdict" "$expect" && [ "$widest" -le 78 ]; then
     mark=ok
     pass=$((pass + 1))
   else
     mark=FAIL
     fail=$((fail + 1))
   fi
-  printf '%-4s %-32s %-20s selfcheck:%s\n' \
-    "$mark" "$label" "${verdict:-<none>}" "$selfcheck"
+  printf '%-4s %-32s %-20s selfcheck:%s widest:%s\n' \
+    "$mark" "$label" "${verdict:-<none>}" "$selfcheck" "$widest"
 }
 
 # queue_row <label> <LIVE|expected-substring> [params...]
@@ -88,24 +95,27 @@ queue_row() {
   unavailable=no
   printf '%s' "$out" | grep -qE '^UNAVAILABLE$' && unavailable=yes
 
+  local widest
+  widest="$(printf '%s' "$out" | sed -n '/^GITLAB MR QUEUE/,$p' | sed '/^error:/,$d' | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')"
+
+  local okrow=no
   if [ "$expect" = "LIVE" ]; then
     if [ "$rc" -eq 0 ] && [ "$unavailable" = no ] \
        && printf '%s' "$out" | grep -q 'GITLAB MR QUEUE'; then
-      mark=ok; pass=$((pass + 1))
-    else
-      mark=FAIL; fail=$((fail + 1))
+      okrow=yes
     fi
   elif printf '%s' "$out" | grep -q "$expect"; then
+    okrow=yes
+  fi
+
+  # Width is ASSERTED, not merely reported: the README claims no report line
+  # exceeds 78 columns, so a regression must fail the sweep.
+  if [ "$okrow" = yes ] && [ "$widest" -le 78 ]; then
     mark=ok; pass=$((pass + 1))
   else
     mark=FAIL; fail=$((fail + 1))
   fi
 
-  # Widest line in the report, to catch anything that runs off a terminal. The
-  # runner's own raw "error:" trailer is not the play's output and is not
-  # wrappable by the play, so stop measuring there.
-  local widest
-  widest="$(printf '%s' "$out" | sed -n '/^GITLAB MR QUEUE/,$p' | sed '/^error:/,$d' | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')"
   printf '%-4s %-32s %-22s widest:%s\n' \
     "$mark" "$label" "rc=$rc unavail=$unavailable" "$widest"
 }
@@ -149,9 +159,9 @@ triage_row() {
   verdict="$(printf '%s' "$out" | grep -m1 '^VERDICT:' | sed 's/^VERDICT: //')"
   selfcheck="$(printf '%s' "$out" | grep -c '74/74 triage-logic cases passed')"
   widest="$(printf '%s' "$out" | sed -n '/^GITLAB PIPELINE TRIAGE/,$p' | sed '/^error:/,$d' \
-    | grep -v 'https\{0,1\}://' \
+    | grep -v '://' \
     | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')"
-  if matches "$verdict" "$expect"; then
+  if matches "$verdict" "$expect" && [ "$widest" -le 78 ]; then
     mark=ok
     pass=$((pass + 1))
   else

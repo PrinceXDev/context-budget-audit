@@ -1,0 +1,67 @@
+GITLAB MR GATE
+
+  DEMO RUN - no project or mr was given, so this gated a real public
+  merge request in gitlab-org/gitlab. Everything below is live data.
+  Point it at your own:
+    rote play run princepanchani/gitlab-mr-gate \
+      project=your-group/your-repo mr=123
+
+  https://gitlab.com/gitlab-org/gitlab/-/merge_requests/143468
+  Remove not-all-data-replicated section
+
+VERDICT: BLOCKED
+
+  MR !143468 cannot merge: blocking discussions are unresolved. Next move:
+  mbadeau.
+
+  whose move : mbadeau
+  detail     : 1 blocker(s): discussions
+
+BLOCKERS (1)
+  [discussions] Blocking discussions are unresolved.
+      evidence : blocking_discussions_resolved=false
+      owner    : mbadeau
+      next     : Resolve the open threads on the MR.
+
+MERGE PATH (what has to happen, in order)
+  1. Resolve the open threads on the MR.
+       who : mbadeau
+       why : Blocking discussions are unresolved.
+
+  Order matters: branch work first, because a later push commonly
+  resets approvals gathered before it.
+
+NOT MEASURED (0)
+  nothing - every dimension was read
+
+STAGE LEDGER
+  read      merge_request
+  read      approvals
+  read      approval_rules
+  read      pipeline
+  read      discussions
+      (via the MR blocking_discussions_resolved flag, readable
+      without a token)
+
+GITLAB SAYS
+  detailed_merge_status : discussions_not_resolved
+    meaning             : blocking discussions are still open
+  pipeline              : success
+  approvals             : 0 still needed of 0 required
+  approval rules        : 2 total, unsatisfied: none
+  labels                : Support Team Contributions, docs-only,
+                          docs::improvement, documentation,
+                          maintenance::refactor, type::maintenance
+
+SELF-CHECK (ran before any live data was judged)
+  47/47 verdict-logic cases passed
+
+VERIFY (re-derived by a different route)
+  CONFIRMED     second_read
+      a fresh read returned the same state the gate reasoned about
+  CONFIRMED     cross_check_detailed_merge_status
+      GitLab also refuses this merge
+      (detailed_merge_status=discussions_not_resolved)
+
+Read-only: nothing was approved, merged, rebased, commented or labelled.
+A dimension marked 'not read' is unknown, not clean.

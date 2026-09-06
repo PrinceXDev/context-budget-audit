@@ -64,13 +64,13 @@
  *   gate behind auth even for public projects; the play then reports UNAVAILABLE
  *   rather than guessing. A running pipeline is PIPELINE_PENDING, never a failure.
  *   Only the newest pipeline is triaged.
- * version: 1.1.0
+ * version: 1.2.0
  * source_url: https://github.com/PrinceXDev/context-budget-audit
  * provenance:
  *   author: Prince Panchani (github.com/PrinceXDev)
  *   workspace: gitlab-mr-gate
  * metadata:
- *   version: 1.1.0
+ *   version: 1.2.0
  *   rote_version: 0.80.0
  *   status: released
  *   kind: atomic

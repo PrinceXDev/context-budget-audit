@@ -62,13 +62,13 @@
  *   KNOWN LIMITS: the token path is exercised end to end against a private
  *   gitlab.com project, but a token against a self-hosted instance is untested - the
  *   five instances above were read anonymously.
- * version: 1.4.1
+ * version: 1.4.2
  * source_url: https://github.com/PrinceXDev/context-budget-audit
  * provenance:
  *   author: Prince Panchani (github.com/PrinceXDev)
  *   workspace: gitlab-mr-gate
  * metadata:
- *   version: 1.4.1
+ *   version: 1.4.2
  *   rote_version: 0.80.0
  *   status: released
  *   kind: atomic
@@ -587,14 +587,27 @@ if (read.kind !== "ok") {
       const note = s?.measured
         ? (s?.route ? "  (via " + String(s.route) + ")" : "")
         : "  (" + String(s?.reason ?? "no reason given").replace(/_/g, " ") + ")";
-      lines.push("  " + state + String(s?.name ?? "?") + note);
+      // The ledger is a fixed-width table, so the row itself must not be
+      // wrapped - that would collapse the column padding. Only the trailing
+      // note wraps, and only when the row would otherwise overrun.
+      const row = "  " + state + String(s?.name ?? "?");
+      if (!note || (row + note).length <= 78) {
+        lines.push(row + note);
+      } else {
+        lines.push(row);
+        for (const l of wrapLine(note.trim(), 62, "      ")) lines.push(l);
+      }
     }
   }
   lines.push("");
 
   lines.push("GITLAB SAYS");
   lines.push("  detailed_merge_status : " + String(facts.detailed_merge_status ?? "?"));
-  lines.push("    meaning             : " + String(facts.dms_meaning ?? "?"));
+  // dms_meaning is one of ~15 sentences keyed off detailed_merge_status, so its
+  // length varies with whatever GitLab reported - the draft case reaches 79.
+  const meaningWrapped = wrapLine(facts.dms_meaning ?? "?", 52, "");
+  lines.push("    meaning             : " + meaningWrapped[0]);
+  for (const l of meaningWrapped.slice(1)) lines.push("                            " + l);
   lines.push("  pipeline              : " + String(facts.pipeline_status ?? "?"));
   lines.push("  approvals             : " +
     (Number(facts.approvals_required) >= 0
@@ -606,8 +619,14 @@ if (read.kind !== "ok") {
       ? countOrUnread(facts.approval_rules_total) + " total, unsatisfied: " +
         (String(facts.approval_rules_unsatisfied ?? "") || "none")
       : "not read"));
-  lines.push("  labels                : " +
-    (Array.isArray(facts.labels) && facts.labels.length ? facts.labels.join(", ") : "none"));
+  // Labels are live, unbounded data: one real gitlab-org/gitlab MR produced a
+  // 139-column line here. Wrap under the value column, not the label column.
+  const labelText = (Array.isArray(facts.labels) && facts.labels.length)
+    ? facts.labels.join(", ")
+    : "none";
+  const labelWrapped = wrapLine(labelText, 52, "");
+  lines.push("  labels                : " + labelWrapped[0]);
+  for (const l of labelWrapped.slice(1)) lines.push("                          " + l);
   lines.push("");
 
   lines.push("SELF-CHECK (ran before any live data was judged)");
@@ -628,7 +647,7 @@ if (read.kind !== "ok") {
     const v = verifyRead.data;
     for (const c of (Array.isArray(v.checks) ? v.checks : [])) {
       lines.push("  " + String(c?.status ?? "?").padEnd(14) + String(c?.check ?? "?"));
-      lines.push("      " + String(c?.detail ?? ""));
+      for (const l of wrapLine(c?.detail, 72, "      ")) lines.push(l);
     }
     if (Number(v.contradicted ?? 0) > 0) {
       lines.push("");
