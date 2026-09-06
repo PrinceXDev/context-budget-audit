@@ -1,0 +1,18 @@
+schema_version = 1
+
+[[tools]]
+id = "python3"
+command = "python3"
+required = true
+
+[[tools.install]]
+manager = "brew"
+package = "python@3"
+
+[[tools.install]]
+manager = "apt"
+package = "python3"
+
+[[tools.install]]
+manager = "system"
+notes = "Any Python 3.8+ on PATH. All three resource scripts are standard-library only: validate.py uses json, os, re, sys, urllib.parse; list_mrs.py uses json, os, socket, sys, urllib.error, urllib.parse, urllib.request; gate_one.py uses json, os, socket, sys, urllib.error, urllib.request. There is no third-party dependency, no virtualenv, and nothing is installed at run time. The only network reach is HTTPS GET against the GitLab REST API v4 on the host given by the gitlab_host parameter (default gitlab.com). Exactly four read paths are used, all under /api/v4/projects/<project>: /merge_requests (one request, listing open merge requests) and then, per gated merge request, /merge_requests/<iid>/approvals, /merge_requests/<iid>/approval_state and /merge_requests/<iid>/pipelines. Total cost is therefore 1 + 3N requests for N gated merge requests, with N capped by max_mrs (default 15, hard limit 50) and at most 3 merge requests enriched concurrently, to stay well inside GitLab rate limits. The per-thread /discussions endpoint is deliberately never called: it requires authentication, while the list endpoint already reports blocking_discussions_resolved without one. No other host is contacted, no binary other than python3 is executed, and no shell is spawned. A GITLAB_TOKEN or CI_JOB_TOKEN present in the environment is sent as a PRIVATE-TOKEN request header and is never placed in a URL query string, never written to stdout or stderr, and never recorded in a step argument; only a boolean about its presence appears in any output. Without a token the play still runs against public projects, and any dimension GitLab gates behind authentication degrades to a labeled unknown rather than failing the run."
