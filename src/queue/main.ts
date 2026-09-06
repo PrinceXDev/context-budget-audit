@@ -11,82 +11,62 @@
  *
  *       rote play run princepanchani/gitlab-mr-queue
  *
- *   That triages a real public backlog so you can see the whole report before
- *   deciding whether to point it at your own. Then point it at your own:
+ *   That triages a real public backlog. Then point it at your own, or at
+ *   self-hosted GitLab with gitlab_host:
  *
  *       rote play run princepanchani/gitlab-mr-queue project=your-group/your-repo
  *
  *   WHAT YOU GET
  *
- *     BUCKETS      Every MR lands in exactly one: READY_TO_MERGE, READY_WITH_UNKNOWNS,
- *                  WAITING_ON_AUTHOR, WAITING_ON_CI, WAITING_ON_REVIEWERS,
- *                  WAITING_ON_MAINTAINER, WAITING_ON_PROCESS or WAITING_ON_ANOTHER_MR.
- *                  The bucket is the EARLIEST thing that must happen, so the person to
- *                  chase is obvious. Worst-first inside each bucket.
- *     ROT LEDGER   Oldest and median age, how many are past ninety days, how many are
- *                  stale. Every other merge-readiness play answers only what is true
- *                  right now. This one answers how long it has been true.
- *     REVIEW LOAD  Who the queue is actually waiting on: their MR count, oldest item
- *                  and average age, from the reviewer assignments GitLab exposes with
- *                  no token at all. Drop auto-assigned bots with ignore_reviewers.
- *                  This is QUEUE LOAD, not performance, and an unfilled reviewer slot
- *                  is reported as a routing gap rather than as a slow person.
- *
- *   WHY GITLAB
- *
- *   Every other merge-readiness play in this registry targets GitHub. This one reads
- *   detailed_merge_status, GitLab's own one-field diagnosis of why a merge is
- *   refused, which GitHub has no equivalent of.
- *
- *   YOUR TEAM'S RULES TRAVEL TOO
- *
- *   GitLab cannot know that a label like "workflow::in dev" means do not merge. Pass
- *   required_labels and forbidden_labels and they become buckets alongside the
- *   mechanical ones. stale_after_days is a parameter because no API can decide how
- *   long is too long for your team.
+ *     BUCKETS      Every MR lands in exactly one of eight: ready, waiting on
+ *                  author, CI, reviewers, maintainer, process, or another MR. The
+ *                  bucket is the EARLIEST thing that must happen, so who to chase
+ *                  is obvious.
+ *     ROT LEDGER   Oldest and median age, how many are past ninety days, how many
+ *                  are stale. Other plays answer what is true right now; this one
+ *                  answers how long it has been true.
+ *     REVIEW LOAD  Who the queue is waiting on: MR count, oldest item, average
+ *                  age - from reviewer assignments GitLab exposes with no token.
+ *                  This is QUEUE LOAD, not performance; an unfilled reviewer slot
+ *                  is a routing gap, not a slow person.
  *
  *   HOW IT REFUSES TO LIE TO YOU
  *
- *     - Merge requests past max_mrs are listed as NOT GATED with the status the list
- *       endpoint already gave, never silently dropped. Capped is not the same as clean.
- *     - An MR with no gate result is reported as unknown, not as mergeable.
- *   - GitLab keeps adding detailed_merge_status values. An unrecognised one lands
- *     in an unknown, never in a ready bucket.
- *   - The MR list is paginated to exhaustion and the open total comes from
- *     GitLab's own x-total, so "every open merge request" means every one. If a
- *     page cannot be read the report says INCOMPLETE instead of implying an
- *     all-clear.
- *     - An approval rule with an empty eligible-approver list is only called a
- *       maintainer or CODEOWNERS fault when a token was supplied. Read anonymously
- *       GitLab returns that list empty for some projects and populated for others, so
- *       without a token the rule is a certain reviewer blocker while WHO can satisfy
- *       it is recorded as genuinely unknown.
- *     - Whether a missing pipeline blocks a merge is a project setting, so
- *       require_pipeline defaults to auto and asks GitLab rather than assuming.
- *     - Without a token, idle time stands in for blocker age and the report labels
- *       that precision APPROXIMATE rather than passing an estimate off as a
- *       measurement. With a GITLAB_TOKEN it reads label events and says EXACT.
+ *     - The MR list is paginated to exhaustion and the open total comes from
+ *       GitLab's own x-total, so "every open merge request" means every one.
+ *     - MRs past max_mrs are listed as NOT GATED with the status the list endpoint
+ *       gave, never silently dropped. Capped is not the same as clean.
+ *     - Without a token, idle time stands in for blocker age and the precision is
+ *       labelled APPROXIMATE rather than passed off as a measurement. With a
+ *       GITLAB_TOKEN it reads label events and says EXACT.
  *
  *   ORDERING MATTERS: order defaults to stalest. Spending the max_mrs budget
- *   newest-first reports a median age of 1 day while a 186-day-old MR falls past the
+ *   newest-first reported a median age of 1 day while a 186-day-old MR fell past the
  *   cap - the same queue then looks healthy when it is not.
  *
- *   READ ONLY. It does not approve, merge, rebase, comment, label or write anything.
- *   Needs only python3. Cost is one request plus three per gated merge request, or
- *   five when a token enables the exact timeline. No credentials at all on public
- *   projects; a private or self-hosted project uses your own GITLAB_TOKEN read from
- *   the environment, sent as a request header, never printed.
+ *   VERIFIED ON SELF-HOSTED GITLAB: a real 100-merge-request backlog on KDE's
+ *   instance, whose oldest MR had been open 1721 days. Those instances run Community
+ *   Edition, which has no approval-rules endpoint, so that dimension is reported as
+ *   unknown per MR rather than mistaken for a bad project path.
  *
- *   KNOWN LIMITS, not overclaimed: the token path has been exercised end to end
- *   against a real private gitlab.com project, and the exact-timeline route via
- *   label events really does run. A self-hosted gitlab_host is still unverified -
- *   there was no self-hosted instance to test against.
- * version: 1.4.0
- * source_url: https://play.modiqo.ai/princepanchani/gitlab-mr-queue
+ *   COMPANION PLAYS. Once the queue points you at one merge request,
+ *   princepanchani/gitlab-mr-gate gates that one in full. If it is waiting on a red
+ *   pipeline, princepanchani/gitlab-pipeline-triage says which job failed.
+ *
+ *   READ ONLY - nothing is approved, merged, rebased, commented or labelled. Needs
+ *   only python3. No credentials on public projects; a private or self-hosted
+ *   project uses your own GITLAB_TOKEN from the environment, sent as a header.
+ *
+ *   KNOWN LIMITS: the token path and the exact-timeline route via label events are
+ *   exercised end to end, but only against gitlab.com. A token against a self-hosted
+ *   instance is untested - the instances above were read anonymously.
+ * version: 1.4.1
+ * source_url: https://github.com/PrinceXDev/context-budget-audit
  * provenance:
+ *   author: Prince Panchani (github.com/PrinceXDev)
  *   workspace: gitlab-mr-gate
  * metadata:
- *   version: 1.4.0
+ *   version: 1.4.1
  *   rote_version: 0.80.0
  *   status: released
  *   kind: atomic
@@ -129,11 +109,11 @@
  *       review_load:
  *         type: object
  *       rows:
- *         type: object
+ *         type: array
  *       not_gated:
- *         type: object
+ *         type: array
  *       no_result:
- *         type: object
+ *         type: array
  *       note:
  *         type: string
  * parameters:
@@ -345,6 +325,16 @@ function wrapLine(text, width, indent) {
   return wrapped.length ? wrapped : [indent];
 }
 
+// An MR title is author-written live data of unpredictable length, and it sits
+// on a scannable index line whose left columns carry the age markers. Wrapping
+// it would break that alignment, so clip it instead - the full title is one
+// click away on the web_url printed directly underneath.
+function fit(text, width) {
+  const s = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (width <= 3) return s.slice(0, Math.max(0, width));
+  return s.length <= width ? s : s.slice(0, width - 3).trimEnd() + "...";
+}
+
 const listData = readStepJson(ctx.step(stepName("list_mrs")));
 const { rows, unreadable } = readFanOutRows(ctx.step(stepName("gate_one")));
 
@@ -360,11 +350,36 @@ const BUCKETS = [
 ];
 
 if (!listData) {
+  // The list step already wrote a precise sentence about WHY to stderr - a bad
+  // project path, or a private project addressed with no token. Without it the
+  // reader is told only that something failed, and the actual diagnosis sits
+  // below the report in the runner's raw error line. A FAILED step exposes it
+  // as output.diagnostic.stderr; a completed one uses the body shape.
+  // Validation runs FIRST, and when it rejects the input the fetch step never
+  // runs - so reading only the fetch step's stderr loses the validator's
+  // specific message ("mr must be a positive integer iid, got 'abc'") and
+  // leaves the reader with nothing but "the step did not complete".
+  const stderrOf = (st) => String(
+    st?.outcome?.output?.diagnostic?.stderr ??
+    st?.outcome?.output?.body?.stderr?.text ??
+    "",
+  );
+  const causeText = (
+    stderrOf(ctx.step(stepName("validate_input"))) ||
+    stderrOf(ctx.step(stepName("list_mrs")))
+  ).replace(/^gitlab-mr-queue:\s*/gm, "").trim();
+
   out.human(
-    "GITLAB MR QUEUE\n\n" +
-    "UNAVAILABLE\n\n" +
-    "  The merge request list could not be read, so nothing was triaged.\n" +
-    "  This is not an empty queue - it is an unknown one.\n",
+    [
+      "GITLAB MR QUEUE",
+      "",
+      "UNAVAILABLE",
+      "",
+      "  The merge request list could not be read, so nothing was triaged.",
+      "  This is not an empty queue - it is an unknown one.",
+      ...(causeText ? ["", "WHY", ...wrapLine(causeText.split("\n")[0], 74, "  ")] : []),
+      "",
+    ].join("\n"),
   );
   out.summary("UNAVAILABLE - the merge request list could not be read");
   out.result({
@@ -447,28 +462,38 @@ if (!listData) {
       const age = (open < 0 ? "age unknown" : open + "d open") +
         (idle < 0 ? "" : ", " + idle + "d idle") +
         (row?.stale ? "  << STALE" : "");
-      lines.push("  !" + String(row?.iid ?? "?") + "  [" + age + "]  " +
-        String(row?.title_display_only ?? ""));
+      const head = "  !" + String(row?.iid ?? "?") + "  [" + age + "]  ";
+      lines.push(head + fit(row?.title_display_only, Math.max(20, 78 - head.length)));
       lines.push("        " + String(row?.web_url ?? ""));
       const bl = Array.isArray(row?.blockers) ? row.blockers : [];
       for (const b of bl) {
-        lines.push("        - [" + String(b?.owner ?? "?") + "] " + String(b?.statement ?? ""));
+        const bh = "        - [" + String(b?.owner ?? "?") + "] ";
+        const bw = wrapLine(b?.statement, 78 - bh.length, "");
+        lines.push(bh + bw[0]);
+        for (const l of bw.slice(1)) lines.push("          " + l);
       }
       const uk = Array.isArray(row?.unknowns) ? row.unknowns : [];
       for (const u of uk) {
-        lines.push("        ? not measured: " + String(u));
+        const uw = wrapLine(u, 78 - 24, "");
+        lines.push("        ? not measured: " + uw[0]);
+        for (const l of uw.slice(1)) lines.push("          " + l);
       }
-      lines.push("        author " + String(row?.author ?? "?") +
+      // author and target_branch are live data with no length bound, so this
+      // trailer wraps rather than running off the edge of a terminal.
+      const meta = "author " + String(row?.author ?? "?") +
         " | into " + String(row?.target_branch ?? "?") +
         " | pipeline " + String(row?.pipeline_status ?? "?") +
-        " | updated " + String(row?.updated_at ?? "?"));
+        " | updated " + String(row?.updated_at ?? "?");
+      for (const l of wrapLine(meta, 70, "        ")) lines.push(l);
     }
     lines.push("");
   }
 
   const emptyBuckets = BUCKETS.filter(([key]) => (grouped.get(key) ?? []).length === 0).map(([key]) => key);
   if (emptyBuckets.length) {
-    lines.push("EMPTY BUCKETS: " + emptyBuckets.join(", "));
+    for (const l of wrapLine("EMPTY BUCKETS: " + emptyBuckets.join(", "), 78, "")) {
+      lines.push(l);
+    }
     lines.push("");
   }
 
@@ -494,8 +519,9 @@ if (!listData) {
   if (notGatedTotal > 0) {
     lines.push("NOT GATED (" + notGatedTotal + ") - raise max_mrs to gate more of these");
     for (const m of notGated.slice(0, 20)) {
-      lines.push("  !" + String(m?.iid ?? "?") + "  " + String(m?.detailed_merge_status ?? "?") +
-        "  " + String(m?.title_display_only ?? ""));
+      const head = "  !" + String(m?.iid ?? "?") + "  " +
+        String(m?.detailed_merge_status ?? "?") + "  ";
+      lines.push(head + fit(m?.title_display_only, Math.max(20, 78 - head.length)));
     }
     const shown = Math.min(notGated.length, 20);
     if (notGatedTotal > shown) {
@@ -518,12 +544,16 @@ if (!listData) {
     lines.push("  oldest open        : " + aged[aged.length - 1] + " days");
     lines.push("  median open        : " + median + " days");
     lines.push("  over 90 days       : " + aged.filter((d) => d > 90).length + " of " + aged.length);
-    lines.push("  idle " + String(staleAfter).padEnd(3) + "+ days     : " + staleRows.length +
+    // Pad the whole label, not the number, or the plus sign drifts away from
+    // the digits it belongs to ("idle 14 + days").
+    lines.push("  " + ("idle " + staleAfter + "+ days").padEnd(19) + ": " + staleRows.length +
       "  (stale_after_days=" + staleAfter + ")");
     const precision = rows.some((r) => r?.timeline_precision === "exact")
       ? "exact (blocker start read from label events)"
       : "approximate (no token: idle time stands in for blocker age)";
-    lines.push("  timeline precision : " + precision);
+    const pw = wrapLine(precision, 55, "");
+    lines.push("  timeline precision : " + pw[0]);
+    for (const l of pw.slice(1)) lines.push("                       " + l);
   }
   lines.push("");
 

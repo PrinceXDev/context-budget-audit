@@ -78,6 +78,12 @@ def get(path):
         if exc.code in (401, 403):
             return None, "auth_required"
         if exc.code == 404:
+            # Approval RULES are a GitLab Premium/Ultimate feature. On Community
+            # Edition - most self-hosted GitLab - the endpoint simply is not
+            # there, and reporting that as "not_found" reads as a bad project
+            # path when the project is in fact perfectly readable.
+            if path.endswith("/approval_state"):
+                return None, "not_available"
             return None, "not_found"
         if exc.code == 429:
             return None, "rate_limited"
