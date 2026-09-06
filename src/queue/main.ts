@@ -50,6 +50,12 @@
  *     - Merge requests past max_mrs are listed as NOT GATED with the status the list
  *       endpoint already gave, never silently dropped. Capped is not the same as clean.
  *     - An MR with no gate result is reported as unknown, not as mergeable.
+ *   - GitLab keeps adding detailed_merge_status values. An unrecognised one lands
+ *     in an unknown, never in a ready bucket.
+ *   - The MR list is paginated to exhaustion and the open total comes from
+ *     GitLab's own x-total, so "every open merge request" means every one. If a
+ *     page cannot be read the report says INCOMPLETE instead of implying an
+ *     all-clear.
  *     - An approval rule with an empty eligible-approver list is only called a
  *       maintainer or CODEOWNERS fault when a token was supplied. Read anonymously
  *       GitLab returns that list empty for some projects and populated for others, so
@@ -75,12 +81,12 @@
  *   against a real private gitlab.com project, and the exact-timeline route via
  *   label events really does run. A self-hosted gitlab_host is still unverified -
  *   there was no self-hosted instance to test against.
- * version: 1.3.1
+ * version: 1.4.0
  * source_url: https://play.modiqo.ai/princepanchani/gitlab-mr-queue
  * provenance:
  *   workspace: gitlab-mr-gate
  * metadata:
- *   version: 1.3.1
+ *   version: 1.4.0
  *   rote_version: 0.80.0
  *   status: released
  *   kind: atomic
@@ -413,6 +419,18 @@ if (!listData) {
   lines.push("");
   lines.push("  open merge requests : " + String(listData.open_total ?? "?"));
   lines.push("  fully gated         : " + rows.length + " of " + gatedExpected);
+  if (listData.listed_total !== undefined && Number(listData.listed_total) !== Number(listData.open_total)) {
+    lines.push("  listed this run     : " + String(listData.listed_total));
+  }
+  if (listData.truncated) {
+    // Say it out loud. A queue report that quietly covers part of the queue is
+    // worse than one that admits it, because it reads as an all-clear.
+    lines.push("");
+    for (const l of wrapLine("INCOMPLETE: " + String(listData.truncated) + ".", 74, "  ")) {
+      lines.push(l);
+    }
+    lines.push("  Buckets below describe only what was listed, not the whole queue.");
+  }
   if (listData.target_branch_filter) lines.push("  target branch filter: " + listData.target_branch_filter);
   if (listData.labels_filter) lines.push("  label filter        : " + listData.labels_filter);
   lines.push("");
@@ -470,13 +488,19 @@ if (!listData) {
   }
 
   const notGated = Array.isArray(listData.not_gated) ? listData.not_gated : [];
-  if (notGated.length) {
-    lines.push("LISTED BUT NOT GATED (" + notGated.length + ") - raise max_mrs to include these");
+  // The true count comes from GitLab's own total, not from how many this run
+  // happened to itemise - otherwise a bounded ledger would understate the backlog.
+  const notGatedTotal = Number(listData.not_gated_count ?? notGated.length);
+  if (notGatedTotal > 0) {
+    lines.push("NOT GATED (" + notGatedTotal + ") - raise max_mrs to gate more of these");
     for (const m of notGated.slice(0, 20)) {
       lines.push("  !" + String(m?.iid ?? "?") + "  " + String(m?.detailed_merge_status ?? "?") +
         "  " + String(m?.title_display_only ?? ""));
     }
-    if (notGated.length > 20) lines.push("  ... and " + (notGated.length - 20) + " more");
+    const shown = Math.min(notGated.length, 20);
+    if (notGatedTotal > shown) {
+      lines.push("  ... and " + (notGatedTotal - shown) + " more not itemised here");
+    }
     lines.push("");
   }
 
@@ -569,9 +593,12 @@ if (!listData) {
     headline,
     totals: {
       open_total: listData.open_total ?? null,
+      listed_total: listData.listed_total ?? null,
+      truncated: listData.truncated || "",
       gated_expected: gatedExpected,
       gated_actual: rows.length,
-      not_gated: notGated.length,
+      not_gated: notGatedTotal,
+      not_gated_listed: notGated.length,
       unreadable_observations: unreadable,
     },
     buckets,

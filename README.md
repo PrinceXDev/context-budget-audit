@@ -44,7 +44,7 @@ These are the constraints the code is actually written to, not aspirations.
 - **No judgment from author-controlled text.** Titles and descriptions are carried
   for display and read by no rule, so an MR asking to be approved cannot move the
   verdict.
-- **Self-check before live data.** 39 cases run against the verdict logic before
+- **Self-check before live data.** 47 cases run against the verdict logic before
   any merge request is judged. If one fails the verdict is withheld entirely.
 - **Verify by a different route.** A fresh second read plus GitLab's own
   server-side verdict. `CONTRADICTED` means trust GitLab, not this play.
@@ -60,7 +60,7 @@ src/                     gitlab-mr-gate (canonical source)
   validate.py            input validation, fails closed
   fetch.py               one GitLab read per surface
   verdict.py             the gate logic; blockers, merge path, headline
-  selfcheck.py           39 bundled cases, half negative assertions
+  selfcheck.py           47 bundled cases, half negative assertions
   verify.py              re-derives claims by a second route
   build.sh               assemble into ~/.rote/flows/... inside WSL
   harvest_fixtures.py    copy real run evidence into presentation fixtures
@@ -76,7 +76,7 @@ Rote does not run on native Windows — everything below is inside WSL.
 
 ```bash
 bash src/build.sh                                     # assemble the package
-python3 src/selfcheck.py src/verdict.py               # 39/39 expected
+python3 src/selfcheck.py src/verdict.py               # 47/47 expected
 rote play lint  /root/.rote/flows/princepanchani/gitlab-mr-gate/main.ts
 rote play run   /root/.rote/flows/princepanchani/gitlab-mr-gate/main.ts
 python3 src/harvest_fixtures.py                       # refresh fixtures from a real run

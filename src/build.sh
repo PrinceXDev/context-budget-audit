@@ -3,7 +3,9 @@
 # directory, and generate the presentation fixture from real measured values.
 set -e
 
-SRC="/mnt/d/Home Workspace/Wemakedev/Rote Playoffs/src"
+# Resolve from this script's own location so the documented workflow works from
+# any clone, not only the author's checkout.
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="/root/.rote/flows/princepanchani/gitlab-mr-gate"
 FIX="$DEST/resources/presentation-fixtures/compute_verdict"
 

@@ -1,6 +1,6 @@
 """Bundled self-check for the verdict logic.
 
-Runs verdict.py against 39 crafted cases with known answers before the play is
+Runs verdict.py against 47 crafted cases with known answers before the play is
 allowed to report anything about a real merge request. If any case fails, this
 step exits non-zero, the verdict step is blocked, and no result is published.
 A gate whose own decision logic is broken must withhold, not guess.
@@ -220,6 +220,40 @@ case("repeated dimensions are counted in the summary, not repeated", lambda: (
 
 case("NEGATIVE: a single blocker gets no count suffix", lambda: (
     lambda r: "conflicts" in r["summary"] and "x1" not in r["summary"])(run(a3="true")))
+
+case("CRITICAL NEGATIVE: jira_association_missing never passes as clean", lambda: (
+    lambda r: r["verdict"] == "BLOCKED" and "merge_checks" in dims(r))(
+        run(a4="jira_association_missing")))
+
+case("CRITICAL NEGATIVE: an UNRECOGNISED merge status is unknown, never clean", lambda: (
+    lambda r: r["verdict"] == "MERGEABLE_WITH_UNKNOWNS"
+    and "mergeability" in unknown_dims(r)
+    and "does not recognise" in " ".join(u["reason"] for u in r["unknowns"]))(
+        run(a4="some_future_gitlab_status")))
+
+case("merge_request_blocked blocks (GitLab's current spelling)", lambda: (
+    lambda r: r["verdict"] == "BLOCKED" and "blocked_by_other_mr" in dims(r))(
+        run(a4="merge_request_blocked")))
+
+case("blocked_status blocks (GitLab's older spelling of the same thing)", lambda: (
+    lambda r: r["verdict"] == "BLOCKED" and "blocked_by_other_mr" in dims(r))(
+        run(a4="blocked_status")))
+
+case("status_checks_must_pass blocks", lambda: (
+    lambda r: r["verdict"] == "BLOCKED" and "merge_checks" in dims(r))(
+        run(a4="status_checks_must_pass")))
+
+case("NEGATIVE: a status covered by a dedicated dimension is not blocked twice", lambda: (
+    lambda r: dims(r).count("draft") == 1 and "merge_checks" not in dims(r)
+    and "mergeability" not in unknown_dims(r))(run(a2="true", a4="draft_status")))
+
+case("NEGATIVE: mergeable raises no merge-status blocker or unknown", lambda: (
+    lambda r: r["verdict"] == "MERGEABLE")(run(a4="mergeable")))
+
+case("a merge-status blocker reads as a full sentence", lambda: (
+    lambda r: all(b["statement"].endswith(".") and b["statement"][:1].isupper()
+                  for b in r["blockers"])
+    and "first. Next move:" in r["headline"])(run(a4="merge_request_blocked")))
 
 failures = []
 for name, fn in CASES:

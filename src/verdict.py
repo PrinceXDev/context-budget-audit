@@ -92,6 +92,43 @@ DMS = {
     "jira_association_missing": "project settings require a Jira issue reference",
     "approvals_syncing": "GitLab is still syncing approval state",
     "security_policy_violations": "a security policy blocks this merge",
+    "merge_request_blocked": "another merge request must merge first",
+    "status_checks_must_pass": "external status checks have not all passed",
+    "merge_time": "the MR cannot merge until a scheduled merge time",
+    "locked_paths": "another MR holds a lock on paths this one changes",
+    "locked_lfs_files": "another MR holds a lock on LFS files this one changes",
+    "broken_status": "GitLab cannot merge this branch",
+    "commits_status": "the source branch is missing commits or does not exist",
+    "policies_denied": "a merge request approval policy denies this merge",
+    "preparing": "GitLab is still preparing the merge request",
+}
+
+# GitLab refuses the merge for a reason this gate has NO other dimension for.
+# Each entry is (dimension, owner, next_action).
+DMS_BLOCKING = {
+    "need_rebase":                ("rebase", None, "Rebase onto %s." % (target_branch or "the target branch")),
+    "requested_changes":          ("requested_changes", None, "Address the reviewer's requested changes."),
+    "security_policy_violations": ("security_policy", "security owners", "Resolve the security policy violation."),
+    "policies_denied":            ("security_policy", "security owners", "Satisfy the merge request approval policy."),
+    "blocked_status":             ("blocked_by_other_mr", "author or maintainer", "Merge the blocking merge request first."),
+    "merge_request_blocked":      ("blocked_by_other_mr", "author or maintainer", "Merge the blocking merge request first."),
+    "jira_association_missing":   ("merge_checks", None, "Reference a Jira issue from the MR, as this project's merge checks require."),
+    "status_checks_must_pass":    ("merge_checks", None, "Make the external status checks pass."),
+    "merge_time":                 ("merge_checks", "nobody - this is a wait, not a task", "Wait for the scheduled merge time."),
+    "locked_paths":               ("merge_checks", "author or maintainer", "Wait for the MR holding the path lock to merge."),
+    "locked_lfs_files":           ("merge_checks", "author or maintainer", "Wait for the MR holding the LFS file lock to merge."),
+    "broken_status":              ("merge_checks", None, "GitLab cannot merge this branch; inspect it on GitLab."),
+    "commits_status":             ("merge_checks", None, "Restore the source branch; GitLab reports its commits are missing."),
+}
+
+# GitLab has not finished computing. Not a blocker, and never clean either.
+DMS_PENDING = {"checking", "unchecked", "preparing", "approvals_syncing"}
+
+# Statuses this gate already covers with a DEDICATED dimension. Blocking on them
+# here too would report one problem twice.
+DMS_COVERED_ELSEWHERE = {
+    "mergeable", "not_open", "draft_status", "conflict",
+    "discussions_not_resolved", "not_approved", "ci_must_pass", "ci_still_running",
 }
 
 # ---- 1. Is it even open? ----
@@ -123,25 +160,30 @@ if has_conflicts == "true":
     block("conflicts", "The branch has merge conflicts.", "has_conflicts=true",
           author or "author", "Rebase or merge the target branch, then resolve the conflicts.")
 
-if dms == "need_rebase":
-    block("rebase", DMS[dms], "detailed_merge_status=need_rebase",
-          author or "author", "Rebase onto %s." % (target_branch or "the target branch"))
-
-if dms == "blocked_status":
-    block("blocked_by_other_mr", DMS[dms], "detailed_merge_status=blocked_status",
-          "author or maintainer", "Merge the blocking merge request first.")
-
-if dms == "requested_changes":
-    block("requested_changes", DMS[dms], "detailed_merge_status=requested_changes",
-          author or "author", "Address the reviewer's requested changes.")
-
-if dms == "security_policy_violations":
-    block("security_policy", DMS[dms], "detailed_merge_status=security_policy_violations",
-          "security owners", "Resolve the security policy violation.")
-
-if dms in ("checking", "unchecked", "approvals_syncing"):
+# detailed_merge_status is GitLab's own refusal reason, so it is the ONE field
+# that must never fall through. GitLab adds new values over time; an unrecognised
+# one is treated as an unknown, not as clean, because the alternative is reporting
+# a merge GitLab is actively refusing as MERGEABLE. This gate would rather say
+# "I do not know what this means" than be confidently wrong.
+if dms in DMS_BLOCKING:
+    dimension, owner, action = DMS_BLOCKING[dms]
+    # The DMS map is written as sentence fragments for the "GitLab says" line.
+    # As a blocker statement it has to be a sentence, or the headline that
+    # appends " Next move: ..." to it runs two sentences together.
+    statement = DMS.get(dms, "GitLab refuses this merge (%s)" % dms)
+    statement = statement[:1].upper() + statement[1:]
+    if not statement.endswith("."):
+        statement += "."
+    block(dimension, statement,
+          "detailed_merge_status=%s" % dms, owner or author or "author", action)
+elif dms in DMS_PENDING:
     unknown("mergeability",
             "GitLab is still computing mergeability (detailed_merge_status=%s); re-run shortly." % dms)
+elif dms and dms not in DMS_COVERED_ELSEWHERE:
+    unknown("mergeability",
+            "GitLab reported detailed_merge_status=%s, which this gate does not recognise. "
+            "It is treated as an unknown rather than as clean, because GitLab may refuse this "
+            "merge for a reason this play has not been taught yet." % dms)
 
 # ---- 3. Approvals: the aggregate count, then the specific rules ----
 if appr_left < 0:
@@ -306,6 +348,7 @@ PHASE = {
     "requested_changes": 60,     # then the review conversation
     "discussions": 70,
     "security_policy": 80,
+    "merge_checks": 85,          # platform-level gates: Jira, status checks, locks
     "approval_rule": 90,         # approvals last: a later push can reset them
     "approvals": 95,
     "process_labels": 99,        # bookkeeping, done at the end

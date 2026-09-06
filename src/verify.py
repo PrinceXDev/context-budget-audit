@@ -52,9 +52,17 @@ def check(name, status, detail):
 
 
 req = urllib.request.Request(api_base + "/merge_requests/" + iid)
-token = os.environ.get("GITLAB_TOKEN") or os.environ.get("CI_JOB_TOKEN") or ""
-if token:
-    req.add_header("PRIVATE-TOKEN", token)
+# GitLab authenticates these two token kinds with DIFFERENT headers: PRIVATE-TOKEN
+# carries personal/project/group access tokens, JOB-TOKEN carries CI_JOB_TOKEN.
+# Collapsing them and always sending PRIVATE-TOKEN makes a correctly configured
+# CI job token fail authentication.
+access_token = os.environ.get("GITLAB_TOKEN") or ""
+job_token = os.environ.get("CI_JOB_TOKEN") or ""
+token = access_token or job_token
+if access_token:
+    req.add_header("PRIVATE-TOKEN", access_token)
+elif job_token:
+    req.add_header("JOB-TOKEN", job_token)
 req.add_header("Accept", "application/json")
 req.add_header("User-Agent", "rote-gitlab-mr-gate-verify")
 

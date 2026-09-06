@@ -22,6 +22,7 @@ import json
 import os
 import socket
 import sys
+import urllib.parse
 import urllib.error
 import urllib.request
 
@@ -84,14 +85,24 @@ def degrade(reason, detail=""):
 
 
 req = urllib.request.Request(api_base + PATHS[kind])
-token = os.environ.get("GITLAB_TOKEN") or os.environ.get("CI_JOB_TOKEN") or ""
-if token:
-    req.add_header("PRIVATE-TOKEN", token)
+# GitLab authenticates these two token kinds with DIFFERENT headers: PRIVATE-TOKEN
+# carries personal/project/group access tokens, JOB-TOKEN carries CI_JOB_TOKEN.
+# Collapsing them and always sending PRIVATE-TOKEN makes a correctly configured
+# CI job token fail authentication.
+access_token = os.environ.get("GITLAB_TOKEN") or ""
+job_token = os.environ.get("CI_JOB_TOKEN") or ""
+token = access_token or job_token
+if access_token:
+    req.add_header("PRIVATE-TOKEN", access_token)
+elif job_token:
+    req.add_header("JOB-TOKEN", job_token)
 req.add_header("Accept", "application/json")
 req.add_header("User-Agent", "rote-gitlab-mr-gate")
 
+page_headers = {}
 try:
     with urllib.request.urlopen(req, timeout=timeout) as response:
+        page_headers = response.headers
         raw = json.loads(response.read())
 except urllib.error.HTTPError as exc:
     if exc.code in (401, 403):
@@ -182,12 +193,63 @@ elif kind == "pipelines":
         "latest_web_url": str(latest.get("web_url") or "") if latest else "",
     })
 elif kind == "discussions":
+    # GitLab PAGINATES discussions and caps per_page at 100. Reading only the
+    # first page and reporting zero unresolved would call an MR clean because its
+    # blocking thread happened to sit on page 2. That is precisely the kind of
+    # confidently-wrong answer this gate exists to avoid, so pages are followed
+    # until the question is settled, and a page that cannot be read degrades the
+    # whole dimension to unmeasured rather than passing a partial count off as a
+    # complete one.
+    MAX_PAGES = 20
+
+    def count_unresolved(threads):
+        found = 0
+        for thread in threads:
+            for note in (thread.get("notes") or []):
+                if note.get("resolvable") and not note.get("resolved"):
+                    found += 1
+                    break
+        return found
+
+    def next_page_of(headers):
+        try:
+            return (headers.get("x-next-page") or "").strip()
+        except AttributeError:
+            return ""
+
     threads = raw if isinstance(raw, list) else []
-    unresolved = 0
-    for thread in threads:
-        for note in (thread.get("notes") or []):
-            if note.get("resolvable") and not note.get("resolved"):
-                unresolved += 1
-                break
+    unresolved = count_unresolved(threads)
+    seen = len(threads)
+    next_page = next_page_of(page_headers)
+    pages = 1
+
+    # Once one unresolved thread is found the dimension is already decided as
+    # blocking, so further pages cannot change the verdict and are not fetched.
+    while next_page and unresolved == 0:
+        if pages >= MAX_PAGES:
+            degrade("too_many_pages",
+                    "more than %d pages of discussions; refusing to report a partial "
+                    "thread count as complete" % MAX_PAGES)
+        page_req = urllib.request.Request(
+            api_base + PATHS[kind] + "&page=" + urllib.parse.quote(next_page))
+        if access_token:
+            page_req.add_header("PRIVATE-TOKEN", access_token)
+        elif job_token:
+            page_req.add_header("JOB-TOKEN", job_token)
+        page_req.add_header("Accept", "application/json")
+        page_req.add_header("User-Agent", "rote-gitlab-mr-gate")
+        try:
+            with urllib.request.urlopen(page_req, timeout=timeout) as page_response:
+                more = json.loads(page_response.read())
+                next_page = next_page_of(page_response.headers)
+        except Exception:
+            degrade("partial_pages",
+                    "page %d of discussions could not be read; the unresolved count so far "
+                    "is incomplete and is not reported as clean" % (pages + 1))
+        items = more if isinstance(more, list) else []
+        unresolved += count_unresolved(items)
+        seen += len(items)
+        pages += 1
+
     # Only counts cross this boundary. No comment prose enters any record.
-    emit(True, "", "", {"threads": len(threads), "unresolved_threads": unresolved})
+    emit(True, "", "", {"threads": seen, "unresolved_threads": unresolved})

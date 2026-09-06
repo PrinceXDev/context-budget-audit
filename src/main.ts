@@ -43,7 +43,7 @@
  *
  *   HOW IT REFUSES TO LIE TO YOU
  *
- *     - 39 bundled self-check cases run BEFORE any live data is judged. If a single
+ *     - 47 bundled self-check cases run BEFORE any live data is judged. If a single
  *       one fails, the verdict is withheld entirely. A gate whose own logic is broken
  *       must refuse rather than guess.
  *     - A verify stage re-derives the headline claims by two routes the gate never
@@ -63,12 +63,12 @@
  *   KNOWN LIMITS, not overclaimed: the token path has been exercised end to end
  *   against a real private gitlab.com project, but a self-hosted gitlab_host is
  *   still unverified - there was no self-hosted instance to test against.
- * version: 1.3.2
+ * version: 1.4.0
  * source_url: https://play.modiqo.ai/princepanchani/gitlab-mr-gate
  * provenance:
  *   workspace: gitlab-mr-gate
  * metadata:
- *   version: 1.3.2
+ *   version: 1.4.0
  *   rote_version: 0.80.0
  *   status: released
  *   kind: atomic

@@ -55,14 +55,20 @@ if not api_base or not iid:
     sys.stderr.write("gitlab-mr-queue: fan-out item %s missing api_base or iid\n" % item_index)
     raise SystemExit(1)
 
-TOKEN = os.environ.get("GITLAB_TOKEN") or os.environ.get("CI_JOB_TOKEN") or ""
+# GitLab authenticates these two token kinds with DIFFERENT headers: PRIVATE-TOKEN
+# carries personal/project/group access tokens, JOB-TOKEN carries CI_JOB_TOKEN.
+ACCESS_TOKEN = os.environ.get("GITLAB_TOKEN") or ""
+JOB_TOKEN = os.environ.get("CI_JOB_TOKEN") or ""
+TOKEN = ACCESS_TOKEN or JOB_TOKEN
 
 
 def get(path):
     """Return (data, reason). reason is "" on success, a code on degrade."""
     req = urllib.request.Request(api_base + path)
-    if TOKEN:
-        req.add_header("PRIVATE-TOKEN", TOKEN)
+    if ACCESS_TOKEN:
+        req.add_header("PRIVATE-TOKEN", ACCESS_TOKEN)
+    elif JOB_TOKEN:
+        req.add_header("JOB-TOKEN", JOB_TOKEN)
     req.add_header("Accept", "application/json")
     req.add_header("User-Agent", "rote-gitlab-mr-queue")
     try:
@@ -92,6 +98,32 @@ DMS_AUTHOR = {
     "requested_changes": "a reviewer requested changes",
     "draft_status": "is still a draft",
     "discussions_not_resolved": "has unresolved blocking discussions",
+}
+
+# GitLab refuses the merge for a reason with no dedicated bucket here.
+# (bucket, sentence). Kept in step with the gate play's own table.
+DMS_BLOCKING = {
+    "need_rebase":                ("author", "needs a rebase"),
+    "requested_changes":          ("author", "a reviewer requested changes"),
+    "security_policy_violations": ("maintainer", "is blocked by a security policy"),
+    "policies_denied":            ("maintainer", "is denied by a merge request approval policy"),
+    "blocked_status":             ("other_mr", "is blocked until another merge request merges"),
+    "merge_request_blocked":      ("other_mr", "is blocked until another merge request merges"),
+    "jira_association_missing":   ("author", "needs a Jira issue reference to satisfy merge checks"),
+    "status_checks_must_pass":    ("author", "has external status checks that have not passed"),
+    "merge_time":                 ("ci", "cannot merge until its scheduled merge time"),
+    "locked_paths":               ("other_mr", "is waiting on a path lock held by another MR"),
+    "locked_lfs_files":           ("other_mr", "is waiting on an LFS file lock held by another MR"),
+    "broken_status":              ("author", "cannot be merged by GitLab in its current state"),
+    "commits_status":             ("author", "is missing source branch commits"),
+}
+
+DMS_PENDING = {"checking", "unchecked", "preparing", "approvals_syncing"}
+
+# Already covered by a dedicated check below; blocking again would double-report.
+DMS_COVERED_ELSEWHERE = {
+    "mergeable", "not_open", "draft_status", "conflict",
+    "discussions_not_resolved", "not_approved", "ci_must_pass", "ci_still_running",
 }
 
 approvals, appr_reason      = get("/merge_requests/" + iid + "/approvals")
@@ -132,14 +164,30 @@ if TOKEN:
     events, timeline_reason = get("/merge_requests/" + iid + "/resource_label_events?per_page=100")
     if isinstance(events, list):
         present = set(mr.get("labels") or [])
-        for event in events:
-            if event.get("action") != "add":
-                continue
+        watched = present & set(forbidden_labels)
+        # A label can be added, removed and added again. Taking the OLDEST add
+        # event overstates the age by every interval the label was NOT on the MR.
+        # Replaying the transitions in order and keeping the LAST unmatched add
+        # gives when the CURRENT blocking interval actually began.
+        ordered = sorted(events, key=lambda e: str(e.get("created_at") or ""))
+        started_at = {}
+        for event in ordered:
             label = ((event.get("label") or {}).get("name"))
-            if label and label in present and label in set(forbidden_labels):
-                age = days_since(event.get("created_at"))
-                if age >= 0 and (blocked_label_since < 0 or age > blocked_label_since):
-                    blocked_label_since = age
+            if not label or label not in watched:
+                continue
+            action = event.get("action")
+            if action == "add":
+                started_at[label] = event.get("created_at")
+            elif action == "remove":
+                started_at.pop(label, None)
+        for stamp in started_at.values():
+            age = days_since(stamp)
+            if age >= 0 and (blocked_label_since < 0 or age > blocked_label_since):
+                blocked_label_since = age
+        # One capped page. If the history is longer, the earliest transitions are
+        # missing and the reconstruction cannot be called exact.
+        if len(events) >= 100:
+            timeline_reason = timeline_reason or "label_history_truncated"
     notes, notes_reason = get("/merge_requests/" + iid + "/notes?per_page=1&sort=desc&order_by=created_at")
     if isinstance(notes, list) and notes:
         last_comment_days = days_since(notes[0].get("created_at"))
@@ -157,12 +205,19 @@ if not mr.get("blocking_discussions_resolved"):
     blockers.append(("author", "has unresolved blocking discussions"))
 
 dms = str(mr.get("detailed_merge_status") or "unknown")
-if dms in ("need_rebase", "requested_changes"):
-    blockers.append(("author", DMS_AUTHOR[dms]))
-if dms == "blocked_status":
-    blockers.append(("other_mr", "is blocked until another merge request merges"))
-if dms in ("checking", "unchecked", "approvals_syncing"):
+# detailed_merge_status is GitLab's own refusal reason and must never fall through
+# to a ready bucket. GitLab keeps adding values; an unrecognised one is an unknown,
+# not a pass. Note merge_request_blocked is GitLab's CURRENT spelling - matching
+# only the older blocked_status let genuinely blocked MRs read as ready.
+if dms in DMS_BLOCKING:
+    bucket, sentence = DMS_BLOCKING[dms]
+    blockers.append((bucket, sentence))
+elif dms in DMS_PENDING:
     unknowns.append("mergeability still being computed by GitLab (%s)" % dms)
+elif dms and dms not in DMS_COVERED_ELSEWHERE:
+    unknowns.append(
+        "GitLab reported detailed_merge_status=%s, which this play does not recognise; "
+        "treated as unknown rather than ready" % dms)
 
 # ---- reviewers ----
 appr_left = -1
